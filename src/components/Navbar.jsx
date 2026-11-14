@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Search, MapPin, User, LogOut, Package, Wallet, ChevronDown, Sparkles, LogIn } from 'lucide-react';
+import { ShoppingBag, MapPin, User, LogOut, Package, ChevronDown, Sparkles, LogIn } from 'lucide-react';
 
 export default function Navbar({
   activeTab,
@@ -19,83 +19,63 @@ export default function Navbar({
   return (
     <header className="navbar">
       <div className="navbar-content">
-        {/* Brand Logo */}
-        <div className="brand-logo" onClick={() => setActiveTab('home')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-          <img
-            src="/gada-marketplace-logo-transparent.png"
-            alt="Gada Marketplace"
-            style={{
-              height: '38px',
-              objectFit: 'contain'
-            }}
-          />
-        </div>
+        {/* Brand Logo & Location Tag (grouped on the left side) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div className="brand-logo" onClick={() => setActiveTab('home')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+            <img
+              src="/gada-marketplace-logo-transparent.png"
+              alt="Gada Marketplace"
+              style={{
+                height: '38px',
+                objectFit: 'contain'
+              }}
+            />
+          </div>
 
-        {/* Location Picker */}
-        <div
-          className="location-picker"
-          onClick={onOpenLocationModal}
-          title="Click to view Google Map and change delivery location"
-          style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-        >
-          <MapPin size={16} color={currentLocation?.isGPS ? '#16A34A' : '#0B4FD8'} />
-          <span style={{ fontWeight: '700', color: '#0F172A', maxWidth: '170px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {currentLocation?.shortName || currentLocation?.name || 'Ring Road, Ibadan'}
-          </span>
-          <span
-            style={{
-              fontSize: '10px',
-              background: currentLocation?.isGPS ? '#DCFCE7' : '#EFF6FF',
-              color: currentLocation?.isGPS ? '#15803D' : '#0B4FD8',
-              padding: '2px 8px',
-              borderRadius: '12px',
-              fontWeight: '800'
-            }}
+          {/* Location Picker */}
+          <div
+            className="location-picker"
+            onClick={onOpenLocationModal}
+            title="Click to view Google Map and change delivery location"
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
           >
-            {currentLocation?.isGPS ? 'Google Maps' : 'Change'}
-          </span>
-        </div>
-
-        {/* Search Bar */}
-        <div className="search-bar-wrap">
-          <Search size={18} className="search-icon-inside" />
-          <input
-            type="text"
-            className="search-input"
-            placeholder="Search items on display, groceries, restaurants, hubs..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              if (activeTab !== 'search' && e.target.value.trim() !== '') {
-                setActiveTab('search');
-              }
-            }}
-          />
+            <MapPin size={16} color={currentLocation?.isGPS ? '#16A34A' : '#0B4FD8'} />
+            <span style={{ fontWeight: '700', color: '#0F172A', maxWidth: '170px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {currentLocation?.isGPS ? (currentLocation?.shortName || currentLocation?.name) : (currentLocation?.name || 'Locating Area...')}
+            </span>
+            <span
+              style={{
+                fontSize: '10px',
+                background: currentLocation?.isGPS ? '#DCFCE7' : '#EFF6FF',
+                color: currentLocation?.isGPS ? '#15803D' : '#0B4FD8',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontWeight: '800'
+              }}
+            >
+              {currentLocation?.isGPS ? 'Google Maps' : 'Change'}
+            </span>
+          </div>
         </div>
 
         {/* Nav Actions */}
         <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Cart Button */}
-          <button className="icon-btn" onClick={onOpenCart} title="View Cart">
-            <ShoppingBag size={20} />
-            {cartCount > 0 && <span className="badge-count">{cartCount}</span>}
-          </button>
+          {/* Cart Button (hidden on landing page for guest visitors) */}
+          {currentUser && (
+            <button
+              className="icon-btn"
+              onClick={onOpenCart}
+              title="View Cart"
+            >
+              <ShoppingBag size={20} />
+              {cartCount > 0 && <span className="badge-count">{cartCount}</span>}
+            </button>
+          )}
 
           {/* User Auth Section */}
           {currentUser ? (
             <div style={{ position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {/* Wallet Pill */}
-                <button
-                  className="icon-btn"
-                  style={{ width: 'auto', padding: '0 12px', borderRadius: '20px', gap: '6px', fontSize: '13px', fontWeight: '700' }}
-                  onClick={() => setActiveTab('profile')}
-                  title="Wallet Balance"
-                >
-                  <span>💳</span>
-                  <span>₦{(currentUser.walletBalance || 0).toLocaleString()}</span>
-                </button>
-
                 {/* Profile Pill Button */}
                 <button
                   onClick={() => setShowUserDropdown(!showUserDropdown)}
@@ -221,7 +201,7 @@ export default function Navbar({
               )}
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <button
                 onClick={() => onOpenAuth('login')}
                 className="primary-btn"

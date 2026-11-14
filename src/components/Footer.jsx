@@ -46,7 +46,7 @@ export default function Footer({
                 Join The Network
               </span>
               <span style={{ fontSize: '12px', color: '#CBD5E1', fontWeight: '600' }}>
-                Grow your business across Nigeria with Gada Logistics
+                Grow your business with Gada Logistics
               </span>
             </div>
             <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#FFF' }}>
@@ -77,7 +77,7 @@ export default function Footer({
               }}
             >
               <Store size={18} />
-              <span>Register as Vendor</span>
+              <span>Register as a Vendor</span>
             </button>
 
             <button
@@ -99,7 +99,7 @@ export default function Footer({
               }}
             >
               <UserCheck size={18} />
-              <span>Register as Store Agent</span>
+              <span>Register as an Agent</span>
             </button>
           </div>
         </div>
@@ -124,7 +124,7 @@ export default function Footer({
             </div>
 
             <p style={{ fontSize: '13px', color: '#94A3B8', lineHeight: '1.6', marginBottom: '20px' }}>
-              Hyperlocal marketplace and on-demand delivery logistics connecting local restaurants, supermarkets, and farm markets directly to customer doorsteps in Nigeria with Google Maps precision.
+              Hyperlocal marketplace and on-demand delivery logistics connecting local restaurants, supermarkets, and farm markets directly to customer doorsteps with live Google Maps precision.
             </p>
 
             {/* Contact details */}
@@ -141,7 +141,7 @@ export default function Footer({
                 <Mail size={16} color="#60A5FA" style={{ flexShrink: 0 }} />
                 <span>
                   <strong style={{ color: '#FFF' }}>Support:</strong>{' '}
-                  <a href="mailto:support@gadamarketplace.com" style={{ color: '#E2E8F0', textDecoration: 'none' }}>support@gadamarketplace.com</a>
+                  <a href="mailto:support@gadatechadmin.com" style={{ color: '#E2E8F0', textDecoration: 'none' }}>support@gadatechadmin.com</a>
                 </span>
               </div>
 
@@ -243,7 +243,7 @@ export default function Footer({
                   onMouseLeave={e => e.currentTarget.style.color = '#CBD5E1'}
                 >
                   <Store size={15} color="#FFA000" />
-                  <span>Register as a Store Vendor</span>
+                  <span>Register as a Vendor</span>
                 </button>
               </li>
 
@@ -255,7 +255,7 @@ export default function Footer({
                   onMouseLeave={e => e.currentTarget.style.color = '#CBD5E1'}
                 >
                   <UserCheck size={15} color="#60A5FA" />
-                  <span>Register as Store Hub Agent</span>
+                  <span>Register as an Agent</span>
                 </button>
               </li>
 
@@ -381,7 +381,7 @@ export default function Footer({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* Google Play Button */}
               <a
-                href="https://play.google.com/store"
+                href="https://play.google.com/store/apps/details?id=com.gadaclient&pcampaignid=web_share"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{
@@ -413,7 +413,7 @@ export default function Footer({
 
               {/* Apple App Store Button */}
               <a
-                href="https://www.apple.com/app-store/"
+                href="https://apps.apple.com/us/app/gada-customer/id6578457399"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   Wallet, PlusCircle, ArrowUpRight, ArrowDownLeft, MapPin, Package,
-  Settings, ShieldCheck, User, LogOut, CheckCircle, Clock, Trash2, Star, Phone, Mail
+  Settings, ShieldCheck, User, LogOut, CheckCircle, Clock, Trash2, Star, Phone, Mail,
+  Eye, EyeOff
 } from 'lucide-react';
 import { authService } from '../services/authService';
 
@@ -15,6 +16,7 @@ export default function UserProfilePage({
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'wallet' | 'addresses' | 'settings'
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [topupAmount, setTopupAmount] = useState(10000);
+  const [showBalance, setShowBalance] = useState(false);
 
   // New Address form
   const [showAddressModal, setShowAddressModal] = useState(false);
@@ -160,11 +162,20 @@ export default function UserProfilePage({
             minWidth: '200px'
           }}
         >
-          <span style={{ fontSize: '11px', color: '#CBD5E1', textTransform: 'uppercase', fontWeight: '700' }}>
-            Gada Wallet
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: '#CBD5E1', textTransform: 'uppercase', fontWeight: '700' }}>
+              Gada Wallet
+            </span>
+            <button
+              onClick={() => setShowBalance(!showBalance)}
+              style={{ background: 'none', border: 'none', color: '#CBD5E1', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+              title={showBalance ? "Hide balance" : "Show balance"}
+            >
+              {showBalance ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
           <div style={{ fontSize: '24px', fontWeight: '800', color: '#FF6B00', marginTop: '2px' }}>
-            ₦{(currentUser.walletBalance || 0).toLocaleString()}
+            {showBalance ? `₦${(currentUser.walletBalance || 0).toLocaleString()}` : '₦••••••'}
           </div>
           <button
             onClick={() => setShowTopupModal(true)}
@@ -327,9 +338,18 @@ export default function UserProfilePage({
               Wallet Overview
             </h3>
             <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '20px', border: '1px solid #E2E8F0', marginBottom: '16px' }}>
-              <span style={{ fontSize: '12px', color: '#64748B' }}>Available Balance</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', color: '#64748B' }}>Available Balance</span>
+                <button
+                  onClick={() => setShowBalance(!showBalance)}
+                  style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                  title={showBalance ? "Hide balance" : "Show balance"}
+                >
+                  {showBalance ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
               <div style={{ fontSize: '32px', fontWeight: '800', color: '#FF6B00', marginTop: '4px' }}>
-                ₦{(currentUser.walletBalance || 0).toLocaleString()}
+                {showBalance ? `₦${(currentUser.walletBalance || 0).toLocaleString()}` : '₦••••••'}
               </div>
               <p style={{ fontSize: '11px', color: '#94A3B8', marginTop: '4px' }}>
                 Use your wallet for instant 1-tap checkout on all items and errands.
