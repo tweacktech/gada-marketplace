@@ -6,7 +6,10 @@ export default function LocationModal({
   isOpen,
   onClose,
   currentLocation,
-  onSelectLocation
+  onSelectLocation,
+  savedAddresses = [],
+  defaultAddressId = null,
+  onSetDefaultAddress
 }) {
   const [searchFilter, setSearchFilter] = useState('');
   const [isDetectingGPS, setIsDetectingGPS] = useState(false);
@@ -193,6 +196,38 @@ export default function LocationModal({
 
         {/* Location List */}
         <div style={{ padding: '8px 22px 20px', maxHeight: '250px', overflowY: 'auto' }}>
+          {savedAddresses.length > 0 && (
+            <>
+              <span style={{ fontSize: '11px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
+                Your Delivery Addresses
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                {savedAddresses.map(a => (
+                  <div key={a.id} style={{ padding: '10px 14px', borderRadius: '12px', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div
+                      onClick={() => a.hasCoords && handlePickLocation(a.location)}
+                      style={{ flex: 1, minWidth: 0, cursor: a.hasCoords ? 'pointer' : 'not-allowed', opacity: a.hasCoords ? 1 : 0.6 }}
+                    >
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A' }}>
+                        {a.label}
+                        {a.id === defaultAddressId && <span style={{ marginLeft: '6px', fontSize: '10px', background: '#DCFCE7', color: '#15803D', borderRadius: '6px', padding: '2px 6px' }}>Default</span>}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748B' }}>{a.address}{!a.hasCoords && ' (no map pin)'}</div>
+                    </div>
+                    {a.id !== defaultAddressId && (
+                      <button
+                        onClick={() => onSetDefaultAddress?.(a.id)}
+                        style={{ background: 'none', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '6px 10px', fontSize: '12px', fontWeight: '700', color: '#0B4FD8', cursor: 'pointer' }}
+                      >
+                        Set default
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           <span style={{ fontSize: '11px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '8px' }}>
             Quick Select Verified Delivery Hubs
           </span>

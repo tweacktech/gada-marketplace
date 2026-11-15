@@ -82,7 +82,7 @@ export function CartSummary() {
           <span>₦{getSubtotal().toLocaleString()}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Total Delivery (Across {vendorGroups.length} vendors)</span>
+          <span className="text-gray-600">Total Delivery</span>
           <span>₦{getTotalDeliveryFee().toLocaleString()}</span>
         </div>
         <div className="flex justify-between text-base font-bold border-t pt-2">

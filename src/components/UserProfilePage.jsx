@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Wallet, PlusCircle, ArrowUpRight, ArrowDownLeft, MapPin, Package,
   Settings, ShieldCheck, User, LogOut, CheckCircle, Clock, Trash2, Star, Phone, Mail,
   Eye, EyeOff
 } from 'lucide-react';
 import { authService } from '../services/authService';
+import OrdersPage from './OrdersPage';
+import WalletPage from './WalletPage';
+import { walletApi } from '../api/wallet';
 
 export default function UserProfilePage({
   currentUser,
@@ -14,6 +17,11 @@ export default function UserProfilePage({
   onTrackOrder
 }) {
   const [activeTab, setActiveTab] = useState('orders'); // 'orders' | 'wallet' | 'addresses' | 'settings'
+  // Live wallet balance, so the header matches the Wallet tab. Refreshed when the tab changes.
+  const [liveBalance, setLiveBalance] = useState(null);
+  useEffect(() => {
+    walletApi.getBalance().then(setLiveBalance).catch(() => {});
+  }, [activeTab]);
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [topupAmount, setTopupAmount] = useState(10000);
   const [showBalance, setShowBalance] = useState(false);
@@ -175,10 +183,10 @@ export default function UserProfilePage({
             </button>
           </div>
           <div style={{ fontSize: '24px', fontWeight: '800', color: '#FF6B00', marginTop: '2px' }}>
-            {showBalance ? `₦${(currentUser.walletBalance || 0).toLocaleString()}` : '₦••••••'}
+            {showBalance ? `₦${Number(liveBalance ?? 0).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₦••••••'}
           </div>
           <button
-            onClick={() => setShowTopupModal(true)}
+            onClick={() => setActiveTab('wallet')}
             style={{
               marginTop: '8px',
               background: '#FF6B00',
@@ -226,198 +234,10 @@ export default function UserProfilePage({
       </div>
 
       {/* TAB 1: ORDERS */}
-      {activeTab === 'orders' && (
-        <div>
-          {orders.length === 0 ? (
-            <div style={{ background: '#FFF', borderRadius: '16px', padding: '40px 20px', textAlign: 'center', border: '1px solid #E2E8F0' }}>
-              <Package size={40} color="#94A3B8" style={{ margin: '0 auto 12px' }} />
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#0F172A' }}>No orders placed yet</h3>
-              <p style={{ fontSize: '13px', color: '#64748B', marginTop: '4px' }}>
-                Browse items on display in the marketplace and place your first logistics delivery order!
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {orders.map((ord, idx) => (
-                <div
-                  key={ord.id || idx}
-                  style={{
-                    background: '#FFF',
-                    borderRadius: '16px',
-                    border: '1px solid #E2E8F0',
-                    padding: '20px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #F1F5F9', paddingBottom: '12px' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A' }}>
-                          Order #{ord.id}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            padding: '3px 8px',
-                            borderRadius: '12px',
-                            background: ord.status === 'Delivered' ? '#ECFDF5' : '#FFF4EC',
-                            color: ord.status === 'Delivered' ? '#059669' : '#FF6B00'
-                          }}
-                        >
-                          {ord.status || 'In Transit'}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '12px', color: '#64748B', marginTop: '2px', display: 'block' }}>
-                        {ord.date || ord.time || 'Today'} • Delivered to: {ord.address || ord.deliveryAddress || 'Saved Address'}
-                      </span>
-                    </div>
+      {activeTab === 'orders' && <OrdersPage onBack={() => setActiveTab('settings')} />}
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '11px', color: '#94A3B8', display: 'block' }}>Total Paid</span>
-                        <span style={{ fontSize: '16px', fontWeight: '800', color: '#FF6B00' }}>
-                          ₦{(ord.total || 0).toLocaleString()}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => onTrackOrder(ord)}
-                        className="primary-btn"
-                        style={{ padding: '8px 16px', fontSize: '12px', borderRadius: '10px' }}
-                      >
-                        Track Order
-                      </button>
-                    </div>
-                  </div>
+      {activeTab === 'wallet' && <WalletPage onBack={() => setActiveTab('orders')} />}
 
-                  {/* Items list */}
-                  <div style={{ marginTop: '12px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>
-                      Items Ordered:
-                    </span>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {ord.items && ord.items.map((it, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            background: '#F8FAFC',
-                            border: '1px solid #E2E8F0',
-                            borderRadius: '8px',
-                            padding: '6px 12px',
-                            fontSize: '12px',
-                            color: '#1E293B'
-                          }}
-                        >
-                          <span style={{ fontWeight: '700', color: '#FF6B00' }}>{it.quantity}x</span> {it.name}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Logistics agent & rider note */}
-                  <div style={{ marginTop: '12px', background: '#F8FAFC', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', color: '#64748B', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>📍 Store Hub: <strong>{ord.storeLocation || 'Bodija Central Hub'}</strong></span>
-                    <span>•</span>
-                    <span>Store Agent: <strong>{ord.agentName || 'Agent Tunde'}</strong></span>
-                    <span>•</span>
-                    <span>Assigned Rider: <strong>{ord.riderName || 'Babatunde Ogunlesi'}</strong></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 2: WALLET */}
-      {activeTab === 'wallet' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-          {/* Card */}
-          <div style={{ background: '#FFF', borderRadius: '20px', border: '1px solid #E2E8F0', padding: '24px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', marginBottom: '12px' }}>
-              Wallet Overview
-            </h3>
-            <div style={{ background: '#F8FAFC', borderRadius: '16px', padding: '20px', border: '1px solid #E2E8F0', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '12px', color: '#64748B' }}>Available Balance</span>
-                <button
-                  onClick={() => setShowBalance(!showBalance)}
-                  style={{ background: 'none', border: 'none', color: '#64748B', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
-                  title={showBalance ? "Hide balance" : "Show balance"}
-                >
-                  {showBalance ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
-              <div style={{ fontSize: '32px', fontWeight: '800', color: '#FF6B00', marginTop: '4px' }}>
-                {showBalance ? `₦${(currentUser.walletBalance || 0).toLocaleString()}` : '₦••••••'}
-              </div>
-              <p style={{ fontSize: '11px', color: '#94A3B8', marginTop: '4px' }}>
-                Use your wallet for instant 1-tap checkout on all items and errands.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowTopupModal(true)}
-              className="primary-btn"
-              style={{ width: '100%', padding: '12px' }}
-            >
-              <PlusCircle size={16} /> Top Up Wallet Online
-            </button>
-          </div>
-
-          {/* Transactions list */}
-          <div style={{ background: '#FFF', borderRadius: '20px', border: '1px solid #E2E8F0', padding: '24px' }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A', marginBottom: '16px' }}>
-              Recent Transactions
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {transactions.map(tx => (
-                <div
-                  key={tx.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 0',
-                    borderBottom: '1px solid #F1F5F9'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        background: tx.type === 'credit' ? '#ECFDF5' : '#FEF2F2',
-                        color: tx.type === 'credit' ? '#059669' : '#DC2626',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      {tx.type === 'credit' ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>{tx.title}</div>
-                      <div style={{ fontSize: '11px', color: '#94A3B8' }}>{tx.date}</div>
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: '800',
-                      color: tx.type === 'credit' ? '#059669' : '#0F172A'
-                    }}
-                  >
-                    {tx.type === 'credit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: ADDRESSES */}
       {activeTab === 'addresses' && (
         <div style={{ background: '#FFF', borderRadius: '20px', border: '1px solid #E2E8F0', padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>

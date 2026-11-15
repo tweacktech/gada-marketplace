@@ -1,3 +1,4 @@
+import { getDefaultAddressId, setDefaultAddressId } from './services/defaultAddress';
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import HomePage from './components/HomePage';
@@ -17,6 +18,7 @@ import CookieSettingsModal from './components/CookieSettingsModal';
 import PartnerRegistrationModal from './components/PartnerRegistrationModal';
 import OrderConfirmationModal from './components/OrderConfirmationModal';
 import CartPage from './components/CartPage';
+import NotificationsPage from './components/NotificationsPage';
 import { useAuth } from './context/AuthContext';
 import { useCart } from './context/CartContext';
 import { locationService } from './services/locationService';
@@ -54,6 +56,50 @@ export default function App() {
 
   // Location State
   const [currentLocation, setCurrentLocation] = useState(() => locationService.getCurrentLocation());
+
+  // Saved delivery addresses shown in the location picker. Addresses without map coordinates can't be selected.
+  const savedAddresses = (currentUser?.addresses || []).map(a => {
+    const hasCoords = a.latitude != null && a.longitude != null && a.latitude !== '' && a.longitude !== '';
+    const label = a.label || 'My address';
+    return {
+      id: String(a.id),
+      label,
+      address: a.address || '',
+      hasCoords,
+      location: {
+        id: `addr-${a.id}`,
+        name: label,
+        shortName: label,
+        area: 'Your delivery address',
+        description: a.address || '',
+        lat: Number(a.latitude),
+        lng: Number(a.longitude),
+        isGPS: false
+      }
+    };
+  });
+  const [defaultTick, setDefaultTick] = useState(0);
+  const defaultAddressId = getDefaultAddressId(currentUser?.id);
+
+  const handleSetDefaultAddress = (addressId) => {
+    setDefaultAddressId(currentUser?.id, addressId);
+    setDefaultTick(t => t + 1);
+    const chosen = savedAddresses.find(a => a.id === String(addressId));
+    if (chosen?.hasCoords) {
+      setCurrentLocation(chosen.location);
+      locationService.setCurrentLocation(chosen.location);
+    }
+  };
+
+  // Apply the saved default when the customer signs in.
+  useEffect(() => {
+    const chosen = savedAddresses.find(a => a.id === defaultAddressId && a.hasCoords);
+    if (chosen) {
+      setCurrentLocation(chosen.location);
+      locationService.setCurrentLocation(chosen.location);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id, defaultTick]);
 
   // Auto GPS Location
   useEffect(() => {
@@ -148,9 +194,9 @@ export default function App() {
     setIsLegalModalOpen(true);
   };
 
-  const handleOpenPartner = (tab = 'vendor') => {
-    setPartnerModalTab(tab);
-    setIsPartnerModalOpen(true);
+  // Vendors register on the business portal.
+  const handleOpenPartner = () => {
+    window.open('https://business.gadaride.com/', '_blank', 'noopener,noreferrer');
   };
 
   const handleProceedToCheckout = () => {
@@ -349,6 +395,10 @@ export default function App() {
         <CartPage />
       )}
 
+      {activeTab === 'notifications' && (
+        <NotificationsPage onBack={() => setActiveTab('home')} />
+      )}
+
       {/* Footer */}
       <Footer
         onOpenLegal={handleOpenLegal}
@@ -420,6 +470,9 @@ export default function App() {
 
       {/* Location Selector Modal */}
       <LocationModal
+        savedAddresses={savedAddresses}
+        defaultAddressId={defaultAddressId}
+        onSetDefaultAddress={handleSetDefaultAddress}
         isOpen={isLocationModalOpen}
         onClose={() => setIsLocationModalOpen(false)}
         currentLocation={currentLocation}

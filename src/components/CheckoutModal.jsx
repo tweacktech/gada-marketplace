@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X, MapPin, Wallet, CreditCard, Landmark, CheckCircle, ShieldCheck,
   Plus, Sparkles, UserCheck, AlertCircle, ArrowRight, Lock, ExternalLink,
   Store, Clock, FileText, CheckCircle2, Loader2
 } from 'lucide-react';
 import { checkoutApi } from '../api';
+import { marketplaceApi } from '../api/marketplace';
+import { walletApi } from '../api/wallet';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
@@ -17,7 +19,7 @@ export default function CheckoutModal({
 }) {
 
   const { currentUser, addAddress } = useAuth();
-  const { cartItems, vendorGroups, summary } = useCart();
+  const { cartItems, vendorGroups, summary, reloadCart } = useCart();
 
   const [paymentMethod, setPaymentMethod] = useState('card_paystack'); // 'card_paystack' | 'wallet'
   const [selectedAddressId, setSelectedAddressId] = useState(
@@ -38,8 +40,13 @@ export default function CheckoutModal({
   const [paymentReference, setPaymentReference] = useState('');
   const [cardDetails, setCardDetails] = useState({ number: '4084 0820 1928 4402', expiry: '12/28', cvv: '381' });
 
-  const finalTotal = summary.total + riderTip;
-  const userWallet = currentUser?.walletBalance || 0;
+  // Live wallet balance; the server charges the cart total (rider tips are not part of the marketplace API).
+  const [liveBalance, setLiveBalance] = useState(0);
+  useEffect(() => {
+    if (isOpen && currentUser) walletApi.getBalance().then(setLiveBalance).catch(() => {});
+  }, [isOpen, currentUser]);
+  const finalTotal = summary.total;
+  const userWallet = liveBalance;
   const hasSufficientWallet = userWallet >= finalTotal;
 
   // Selected address resolution
@@ -68,6 +75,25 @@ export default function CheckoutModal({
 
     if (paymentMethod === 'wallet' && !hasSufficientWallet) {
       alert(`Insufficient wallet balance (₦${userWallet.toLocaleString()}). Please top up or select Paystack.`);
+      return;
+    }
+
+    if (paymentMethod === 'wallet') {
+      setIsProcessingPayment(true);
+      try {
+        const addr = currentUser?.addresses?.find(a => a.id === selectedAddressId);
+        const res = await marketplaceApi.checkout({
+          deliveryAddress: resolvedAddress,
+          deliveryLatitude: addr?.latitude != null ? Number(addr.latitude) : undefined,
+          deliveryLongitude: addr?.longitude != null ? Number(addr.longitude) : undefined,
+          notes: deliveryNotes || undefined,
+        });
+        await reloadCart();
+        completeOrderHandover(res.payment_reference);
+      } catch (err) {
+        alert(err.message || 'Checkout failed.');
+        setIsProcessingPayment(false);
+      }
       return;
     }
 
@@ -163,7 +189,7 @@ export default function CheckoutModal({
             </div>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>
-                Multi-Vendor Secure Checkout
+                Secure Checkout
               </h2>
               <p style={{ fontSize: '12px', color: '#64748B' }}>
                 Rapid Direct Delivery &bull; {vendorGroups.length} Merchant {vendorGroups.length === 1 ? 'Hub' : 'Hubs'}
@@ -512,7 +538,7 @@ export default function CheckoutModal({
                 <span style={{ fontWeight: '700', color: '#0F172A' }}>₦{summary.subtotal.toLocaleString()}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
-                <span>Multi-Vendor Delivery ({vendorGroups.length} {vendorGroups.length === 1 ? 'Hub' : 'Hubs'})</span>
+                <span>Delivery</span>
                 <span style={{ fontWeight: '700', color: '#0F172A' }}>₦{summary.deliveryFee.toLocaleString()}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>

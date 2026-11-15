@@ -50,7 +50,7 @@ export default function Footer({
               </span>
             </div>
             <h3 style={{ fontSize: '22px', fontWeight: '800', color: '#FFF' }}>
-              Are you a Food Vendor, Store Owner, or Want to be a Hub Agent?
+              Are you a Food Vendor or Store Owner?
             </h3>
             <p style={{ fontSize: '13px', color: '#94A3B8', marginTop: '4px' }}>
               List your catalog on display for free or manage order dispatches from assigned local market hubs.
@@ -78,28 +78,6 @@ export default function Footer({
             >
               <Store size={18} />
               <span>Register as a Vendor</span>
-            </button>
-
-            <button
-              onClick={() => onOpenPartnerRegistration('agent')}
-              style={{
-                background: '#FF6B00',
-                color: '#FFF',
-                border: 'none',
-                padding: '12px 22px',
-                borderRadius: '14px',
-                fontSize: '13px',
-                fontWeight: '800',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 16px rgba(255,107,0,0.35)',
-                transition: 'all 0.2s'
-              }}
-            >
-              <UserCheck size={18} />
-              <span>Register as an Agent</span>
             </button>
           </div>
         </div>
@@ -248,15 +226,6 @@ export default function Footer({
               </li>
 
               <li>
-                <button
-                  onClick={() => onOpenPartnerRegistration('agent')}
-                  style={{ color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left', transition: 'color 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.color = '#60A5FA'}
-                  onMouseLeave={e => e.currentTarget.style.color = '#CBD5E1'}
-                >
-                  <UserCheck size={15} color="#60A5FA" />
-                  <span>Register as an Agent</span>
-                </button>
               </li>
 
               <li>

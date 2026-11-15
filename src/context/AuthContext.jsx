@@ -1,128 +1,145 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authApi } from '../api';
-import { apiClient } from '../api/client';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { apiClient, UNAUTHORIZED_EVENT } from '../api/client';
+import { authApi } from '../api/customerAuth';
 
 const AuthContext = createContext(null);
 
+const initialsOf = (name = '') =>
+  name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'G';
+
+/** Maps the backend user (full_name, addresses…) onto the shape the UI reads. */
+export function normalizeUser(user) {
+  if (!user) return null;
+  const name = user.full_name || user.name || user.username || '';
+  return { ...user, name, avatar: initialsOf(name), addresses: user.addresses || [] };
+}
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [token, setTokenState] = useState(() => apiClient.getToken());
+  const [isLoading, setIsLoading] = useState(Boolean(apiClient.getToken()));
 
-  // Initialize session state on mount
-  useEffect(() => {
-    async function initAuth() {
-      try {
-        const storedToken = apiClient.getToken();
-        if (storedToken) {
-          const user = await authApi.getMe();
-          if (user) {
-            setCurrentUser(user);
-          }
-        }
-      } catch (err) {
-        console.warn('Session restoration failed:', err);
-        apiClient.setToken(null);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    initAuth();
+  const startSession = useCallback((user, newToken) => {
+    apiClient.setToken(newToken);
+    setTokenState(newToken);
+    setCurrentUser(normalizeUser(user));
   }, []);
 
-  const login = async ({ email, phone, password }) => {
-    setIsLoading(true);
-    try {
-      const res = await authApi.login({ email, phone, password });
-      setCurrentUser(res.user);
-      setTokenState(res.token);
-      return res.user;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const requestOtp = async ({ phone, email }) => {
-    return authApi.requestOtp({ phone, email });
-  };
-
-  const verifyOtp = async ({ phone, email, otp }) => {
-    setIsLoading(true);
-    try {
-      const res = await authApi.verifyOtp({ phone, email, otp });
-      setCurrentUser(res.user);
-      setTokenState(res.token);
-      return res.user;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const register = async (userData) => {
-    setIsLoading(true);
-    try {
-      const res = await authApi.register(userData);
-      setCurrentUser(res.user);
-      setTokenState(res.token);
-      return res.user;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loginWithGoogle = async (googleData = {}) => {
-    setIsLoading(true);
-    try {
-      const res = await authApi.loginWithGoogle(googleData);
-      setCurrentUser(res.user);
-      setTokenState(res.token);
-      return res.user;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const logout = async () => {
-    await authApi.logout();
-    setCurrentUser(null);
+  const clearSession = useCallback(() => {
+    apiClient.setToken(null);
     setTokenState(null);
-  };
+    setCurrentUser(null);
+  }, []);
 
-  const updateProfile = async (updates) => {
-    const updated = await authApi.updateProfile(updates);
-    setCurrentUser(updated);
-    return updated;
-  };
+  const refreshProfile = useCallback(async () => {
+    const res = await authApi.getProfile();
+    const user = normalizeUser(res.data);
+    setCurrentUser(user);
+    return user;
+  }, []);
 
-  const addAddress = async (newAddress) => {
-    if (!currentUser) return null;
-    const currentAddresses = currentUser.addresses || [];
-    const formatted = {
-      id: `addr-${Date.now()}`,
-      label: newAddress.label || 'Home',
-      address: newAddress.address,
-      landmark: newAddress.landmark || '',
-      deliveryNotes: newAddress.deliveryNotes || '',
-      isDefault: currentAddresses.length === 0 || !!newAddress.isDefault
-    };
+  // Any 401 on an authenticated call means the server dropped the session.
+  useEffect(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, clearSession);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, clearSession);
+  }, [clearSession]);
 
-    let updatedList = [...currentAddresses];
-    if (formatted.isDefault) {
-      updatedList = updatedList.map(a => ({ ...a, isDefault: false }));
+  // Restore the session on load.
+  useEffect(() => {
+    if (!apiClient.getToken()) {
+      setIsLoading(false);
+      return;
     }
-    updatedList.push(formatted);
+    refreshProfile()
+      .catch((err) => {
+        if (err.status === 401) clearSession();
+      })
+      .finally(() => setIsLoading(false));
+  }, [refreshProfile, clearSession]);
 
-    return updateProfile({ addresses: updatedList });
-  };
+  // ---- Sign in ----------------------------------------------------------
+  const login = useCallback(
+    async ({ phone, password }) => {
+      const { data } = await authApi.login({ phone, password });
+      if (data.user?.account_type && data.user.account_type !== 'customer') {
+        throw new Error('This phone number is not a customer account. Please use the correct app.');
+      }
+      startSession(data.user, data.token);
+      return normalizeUser(data.user);
+    },
+    [startSession]
+  );
 
-  const setDefaultAddress = async (addressId) => {
-    if (!currentUser) return null;
-    const updated = (currentUser.addresses || []).map(a => ({
-      ...a,
-      isDefault: a.id === addressId
-    }));
-    return updateProfile({ addresses: updated });
-  };
+  // ---- Sign up ----------------------------------------------------------
+  const startSignup = useCallback((phone) => authApi.createAccount(phone), []);
+  const resendSignupOtp = useCallback((phone) => authApi.resendSignupOtp(phone), []);
+
+  /** Resolves to the temp_token that completeSignup needs. */
+  const confirmSignupOtp = useCallback(async (phone, otp) => {
+    const { data } = await authApi.confirmAccountOtp(phone, otp);
+    return data.temp_token;
+  }, []);
+
+  const completeSignup = useCallback(
+    async (details) => {
+      const { data } = await authApi.completeAccount(details);
+      startSession(data.user, data.token);
+      return normalizeUser(data.user);
+    },
+    [startSession]
+  );
+
+  // ---- Forgot password --------------------------------------------------
+  const requestPasswordReset = useCallback((phone) => authApi.requestPasswordReset(phone), []);
+  const verifyPasswordResetOtp = useCallback((otp) => authApi.verifyPasswordResetOtp(otp), []);
+
+  const resetPassword = useCallback(
+    async ({ phone, password }) => {
+      const { data } = await authApi.resetPassword({ phone, password });
+      startSession(data.user, data.token);
+      return normalizeUser(data.user);
+    },
+    [startSession]
+  );
+
+  // ---- Session & profile ------------------------------------------------
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      /* token may already be gone server-side; clear locally regardless */
+    }
+    clearSession();
+  }, [clearSession]);
+
+  const updateProfile = useCallback(
+    async (updates) => {
+      await authApi.updateProfile(updates);
+      return refreshProfile();
+    },
+    [refreshProfile]
+  );
+
+  const addAddress = useCallback(
+    async (newAddress) => {
+      await authApi.addAddress({
+        address: newAddress.address,
+        label: newAddress.label || 'Home',
+        landmark: newAddress.landmark || '',
+        latitude: newAddress.latitude,
+        longitude: newAddress.longitude,
+      });
+      return refreshProfile();
+    },
+    [refreshProfile]
+  );
+
+  // No "default address" endpoint exists in the customer API yet, so this is local only.
+  const setDefaultAddress = useCallback((addressId) => {
+    setCurrentUser((prev) =>
+      prev ? { ...prev, addresses: prev.addresses.map((a) => ({ ...a, isDefault: a.id === addressId })) } : prev
+    );
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -133,14 +150,18 @@ export function AuthProvider({ children }) {
         token,
         isLoading,
         login,
-        requestOtp,
-        verifyOtp,
-        register,
-        loginWithGoogle,
+        startSignup,
+        resendSignupOtp,
+        confirmSignupOtp,
+        completeSignup,
+        requestPasswordReset,
+        verifyPasswordResetOtp,
+        resetPassword,
         logout,
         updateProfile,
+        refreshProfile,
         addAddress,
-        setDefaultAddress
+        setDefaultAddress,
       }}
     >
       {children}
@@ -150,8 +171,6 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

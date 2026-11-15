@@ -1,724 +1,455 @@
-import React, { useState, useEffect } from 'react';
-import { X, Lock, Mail, User, Phone, MapPin, Eye, EyeOff, Sparkles, CheckCircle2, ArrowRight, KeyRound, Smartphone, AlertCircle, RefreshCw } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { X, Eye, EyeOff, Phone, Lock, User, Mail, KeyRound, AlertCircle, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { isValidPhone, normalizePhone } from '../api/customerAuth';
 
-const GoogleIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"/>
-    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.34 24 12 24z"/>
-    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.94 0 12s.45 3.84 1.25 5.42l4.03-3.15z"/>
-    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-  </svg>
-);
+const ORANGE = '#FF6B00';
+const RESEND_SECONDS = 60;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Sign-in is the default tab; 'register' is accepted for older callers.
+const normalizeMode = (m) => (m === 'register' || m === 'signup' ? 'signup' : 'login');
+
+const inputBase = {
+  width: '100%',
+  padding: '12px 42px 12px 40px',
+  borderRadius: 12,
+  border: '1px solid #E2E8F0',
+  fontSize: 15,
+  outline: 'none',
+  boxSizing: 'border-box',
+  background: '#FFF',
+};
+
+const primaryBtn = (disabled) => ({
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  border: 'none',
+  background: disabled ? '#FDBA74' : ORANGE,
+  color: '#FFF',
+  fontWeight: 700,
+  fontSize: 15,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  marginTop: 6,
+});
+
+function Field({ icon: Icon, label, trailing, ...inputProps }) {
+  return (
+    <label style={{ display: 'block', marginBottom: 14 }}>
+      <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+        {label}
+      </span>
+      <div style={{ position: 'relative' }}>
+        <Icon size={18} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+        <input {...inputProps} style={inputBase} />
+        {trailing && (
+          <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)' }}>{trailing}</div>
+        )}
+      </div>
+    </label>
+  );
+}
 
 export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = 'login', message = '' }) {
-  const { login, requestOtp, verifyOtp, register, loginWithGoogle } = useAuth();
+  const auth = useAuth();
 
-  const [mode, setMode] = useState(initialMode); // 'login' | 'otp' | 'register'
+  const [mode, setMode] = useState(normalizeMode(initialMode)); // 'login' | 'signup' | 'forgot'
+  const [step, setStep] = useState('login'); // signup/forgot: 'phone' → 'otp' → 'details' | 'password'
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpNotice, setOtpNotice] = useState('');
+  const [cooldown, setCooldown] = useState(0);
 
-  // Sync mode when modal opens or initialMode changes
+  // The signup temp token lives only in memory, never in storage.
+  const tempTokenRef = useRef(null);
+
+  const resetForm = (nextMode = normalizeMode(initialMode)) => {
+    setMode(nextMode);
+    setStep(nextMode === 'login' ? 'login' : 'phone');
+    setOtp('');
+    setPassword('');
+    setConfirmPassword('');
+    setFullName('');
+    setEmail('');
+    setShowPassword(false);
+    setError('');
+    setNotice('');
+    setCooldown(0);
+    tempTokenRef.current = null;
+  };
+
+  // Reset whenever the modal opens or the requested tab changes.
   useEffect(() => {
-    if (isOpen) {
-      setMode(initialMode);
-      setError('');
-    }
+    if (isOpen) resetForm(normalizeMode(initialMode));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialMode]);
 
-  // Form states
-  const [identifier, setIdentifier] = useState(''); // email or phone
-  const [password, setPassword] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [address, setAddress] = useState('');
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   if (!isOpen) return null;
 
-  const handlePasswordLogin = async (e) => {
-    e.preventDefault();
+  const switchMode = (nextMode) => resetForm(nextMode);
+
+  // Runs an async step with shared loading and error handling.
+  const run = async (fn) => {
     setError('');
     setLoading(true);
-
     try {
-      if (!identifier.trim() || !password) {
-        throw new Error('Please enter both your email/phone and password');
-      }
-      const isEmail = identifier.includes('@');
-      const user = await login({
-        email: isEmail ? identifier.trim() : undefined,
-        phone: !isEmail ? identifier.trim() : undefined,
-        password
-      });
-      if (onSuccess) onSuccess(user, `Welcome back, ${user.name}! 👋`);
-      onClose();
+      await fn();
     } catch (err) {
-      setError(err.message || 'Login failed. Please check credentials.');
+      setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      if (!identifier.trim()) {
-        throw new Error('Please enter your phone number or email to receive OTP');
-      }
-      const isEmail = identifier.includes('@');
-      const res = await requestOtp({
-        phone: !isEmail ? identifier.trim() : undefined,
-        email: isEmail ? identifier.trim() : undefined
-      });
-      setOtpSent(true);
-      setOtpNotice(res.message || 'OTP sent! Use demo code: 123456');
-    } catch (err) {
-      setError(err.message || 'Failed to send OTP code.');
-    } finally {
-      setLoading(false);
-    }
+  const finish = (user, welcome) => {
+    resetForm();
+    onSuccess?.(user, welcome);
+    onClose?.();
   };
 
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      if (!otpCode.trim() || otpCode.length < 4) {
-        throw new Error('Please enter the 6-digit verification code.');
-      }
-      const isEmail = identifier.includes('@');
-      const user = await verifyOtp({
-        phone: !isEmail ? identifier.trim() : undefined,
-        email: isEmail ? identifier.trim() : undefined,
-        otp: otpCode.trim()
-      });
-      if (onSuccess) onSuccess(user, `Verified successfully! Welcome, ${user.name}! 🚀`);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'Invalid OTP code.');
-    } finally {
-      setLoading(false);
-    }
+  const requirePhone = () => {
+    if (!isValidPhone(phone)) throw new Error('Enter a valid 11-digit phone number, e.g. 08012345678.');
+  };
+  const requirePassword = () => {
+    if (password.length < 8) throw new Error('Password must be at least 8 characters.');
+    if (password !== confirmPassword) throw new Error('Passwords do not match.');
   };
 
-  const handleRegisterSubmit = async (e) => {
+  // ---- Sign in ----------------------------------------------------------
+  const handleLogin = (e) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    run(async () => {
+      requirePhone();
+      if (!password) throw new Error('Enter your password.');
+      const user = await auth.login({ phone, password });
+      finish(user, `Welcome back, ${user.name || 'there'}! 👋`);
+    });
+  };
 
-    try {
-      if (!name.trim()) throw new Error('Please enter your full name');
-      if (!email.trim() || !email.includes('@')) throw new Error('Please enter a valid email address');
-      if (!password || password.length < 6) throw new Error('Password must be at least 6 characters');
+  // ---- Sign up: phone → OTP → details ------------------------------------
+  const sendSignupOtp = (e) => {
+    e.preventDefault();
+    run(async () => {
+      requirePhone();
+      await auth.startSignup(phone);
+      setStep('otp');
+      setCooldown(RESEND_SECONDS);
+      setNotice(`We sent a 6-digit code to ${normalizePhone(phone)}.`);
+    });
+  };
 
-      const user = await register({
-        name,
+  const verifySignupOtp = (e) => {
+    e.preventDefault();
+    run(async () => {
+      if (!/^\d{6}$/.test(otp)) throw new Error('Enter the 6-digit code.');
+      tempTokenRef.current = await auth.confirmSignupOtp(phone, otp);
+      setNotice('');
+      setStep('details');
+    });
+  };
+
+  const completeSignup = (e) => {
+    e.preventDefault();
+    run(async () => {
+      if (fullName.trim().length < 2) throw new Error('Enter your full name.');
+      if (!EMAIL_RE.test(email.trim())) throw new Error('Enter a valid email address.');
+      requirePassword();
+      const user = await auth.completeSignup({
+        tempToken: tempTokenRef.current,
+        fullName,
         email,
-        phone,
         password,
-        address
+        passwordConfirmation: confirmPassword,
       });
-      if (onSuccess) onSuccess(user, `Account registered! Welcome to Gada, ${user.name}! 🎉`);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'Registration failed.');
-    } finally {
-      setLoading(false);
-    }
+      finish(user, `Account created! Welcome to Gada, ${user.name}! 🎉`);
+    });
   };
 
-  const handleGoogleLogin = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const user = await loginWithGoogle({
-        name: name.trim() || 'George Emmanuel',
-        email: email.trim().includes('@') ? email.trim() : 'george.emmanuel@gmail.com',
-        avatar: 'GE'
-      });
-      if (onSuccess) onSuccess(user, `Signed in with Google! Welcome to Gada, ${user.name}! 🚀`);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'Google sign-in failed.');
-    } finally {
-      setLoading(false);
-    }
+  // ---- Forgot password: phone → OTP → new password -----------------------
+  const sendResetOtp = (e) => {
+    e.preventDefault();
+    run(async () => {
+      requirePhone();
+      await auth.requestPasswordReset(phone);
+      setStep('otp');
+      setCooldown(RESEND_SECONDS);
+      setNotice(`If an account exists for ${normalizePhone(phone)}, a code has been sent.`);
+    });
   };
 
-  const handleQuickDemoLogin = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const user = await login({ email: 'george@gada.ng', password: 'password123' });
-      if (onSuccess) onSuccess(user, `Logged in as Demo Customer (${user.name}) ✨`);
-      onClose();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const verifyResetOtp = (e) => {
+    e.preventDefault();
+    run(async () => {
+      if (!/^\d{6}$/.test(otp)) throw new Error('Enter the 6-digit code.');
+      await auth.verifyPasswordResetOtp(otp);
+      setNotice('');
+      setStep('password');
+    });
   };
+
+  const resetPassword = (e) => {
+    e.preventDefault();
+    run(async () => {
+      requirePassword();
+      const user = await auth.resetPassword({ phone, password });
+      finish(user, 'Password updated. You are now signed in.');
+    });
+  };
+
+  const resend = () => {
+    if (cooldown > 0 || loading) return;
+    run(async () => {
+      if (mode === 'signup') await auth.resendSignupOtp(phone);
+      else await auth.requestPasswordReset(phone);
+      setCooldown(RESEND_SECONDS);
+      setNotice('A new code has been sent.');
+    });
+  };
+
+  const togglePassword = (
+    <button
+      type="button"
+      onClick={() => setShowPassword((v) => !v)}
+      aria-label={showPassword ? 'Hide password' : 'Show password'}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', padding: 4 }}
+    >
+      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+    </button>
+  );
+
+  const phoneField = (
+    <Field
+      icon={Phone}
+      label="Phone number"
+      type="tel"
+      inputMode="numeric"
+      autoComplete="tel"
+      placeholder="08012345678"
+      value={phone}
+      onChange={(e) => setPhone(e.target.value)}
+      maxLength={14}
+      required
+    />
+  );
+
+  const otpField = (
+    <Field
+      icon={KeyRound}
+      label="6-digit code"
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      placeholder="000000"
+      value={otp}
+      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+      required
+    />
+  );
+
+  const passwordFields = (label = 'Password') => (
+    <>
+      <Field
+        icon={Lock}
+        label={label}
+        type={showPassword ? 'text' : 'password'}
+        autoComplete="new-password"
+        placeholder="At least 8 characters"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        trailing={togglePassword}
+        required
+      />
+      <Field
+        icon={Lock}
+        label="Confirm password"
+        type={showPassword ? 'text' : 'password'}
+        autoComplete="new-password"
+        placeholder="Re-enter password"
+        value={confirmPassword}
+        onChange={(e) => setConfirmPassword(e.target.value)}
+        required
+      />
+    </>
+  );
+
+  const resendRow = (
+    <div style={{ textAlign: 'center', fontSize: 13, color: '#64748B', marginTop: 4 }}>
+      Didn’t get it?{' '}
+      <button
+        type="button"
+        onClick={resend}
+        disabled={cooldown > 0 || loading}
+        style={{ background: 'none', border: 'none', color: cooldown > 0 ? '#94A3B8' : ORANGE, fontWeight: 700, cursor: cooldown > 0 ? 'default' : 'pointer' }}
+      >
+        {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+      </button>
+    </div>
+  );
+
+  const titles = {
+    login: 'Sign in to Gada',
+    signup: 'Create your account',
+    forgot: 'Reset your password',
+  };
+
+  let form = null;
+  if (mode === 'login') {
+    form = (
+      <form onSubmit={handleLogin} noValidate>
+        {phoneField}
+        <Field
+          icon={Lock}
+          label="Password"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete="current-password"
+          placeholder="Your password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          trailing={togglePassword}
+          required
+        />
+        <div style={{ textAlign: 'right', marginTop: -6, marginBottom: 6 }}>
+          <button type="button" onClick={() => switchMode('forgot')} style={linkBtn}>
+            Forgot password?
+          </button>
+        </div>
+        <button type="submit" disabled={loading} style={primaryBtn(loading)}>
+          {loading ? 'Signing in…' : 'Sign in'} {!loading && <ArrowRight size={18} />}
+        </button>
+      </form>
+    );
+  } else if (mode === 'signup' && step === 'phone') {
+    form = (
+      <form onSubmit={sendSignupOtp} noValidate>
+        {phoneField}
+        <p style={hint}>We’ll text you a code to verify this number.</p>
+        <button type="submit" disabled={loading} style={primaryBtn(loading)}>
+          {loading ? 'Sending code…' : 'Send code'} {!loading && <ArrowRight size={18} />}
+        </button>
+      </form>
+    );
+  } else if (step === 'otp') {
+    const onSubmit = mode === 'signup' ? verifySignupOtp : verifyResetOtp;
+    form = (
+      <form onSubmit={onSubmit} noValidate>
+        {otpField}
+        <button type="submit" disabled={loading || otp.length !== 6} style={primaryBtn(loading || otp.length !== 6)}>
+          {loading ? 'Verifying…' : 'Verify code'}
+        </button>
+        {resendRow}
+      </form>
+    );
+  } else if (mode === 'signup' && step === 'details') {
+    form = (
+      <form onSubmit={completeSignup} noValidate>
+        <Field icon={User} label="Full name" autoComplete="name" placeholder="Your full name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+        <Field icon={Mail} label="Email" type="email" autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        {passwordFields()}
+        <button type="submit" disabled={loading} style={primaryBtn(loading)}>
+          {loading ? 'Creating account…' : 'Create account'}
+        </button>
+      </form>
+    );
+  } else if (mode === 'forgot' && step === 'phone') {
+    form = (
+      <form onSubmit={sendResetOtp} noValidate>
+        {phoneField}
+        <button type="submit" disabled={loading} style={primaryBtn(loading)}>
+          {loading ? 'Sending code…' : 'Send reset code'}
+        </button>
+        <div style={{ textAlign: 'center', marginTop: 14 }}>
+          <button type="button" onClick={() => switchMode('login')} style={linkBtn}>Back to sign in</button>
+        </div>
+      </form>
+    );
+  } else if (mode === 'forgot' && step === 'password') {
+    form = (
+      <form onSubmit={resetPassword} noValidate>
+        {passwordFields('New password')}
+        <button type="submit" disabled={loading} style={primaryBtn(loading)}>
+          {loading ? 'Saving…' : 'Set new password'}
+        </button>
+      </form>
+    );
+  }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div
-        className="modal-card auth-modal-card"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '480px',
-          width: '92%',
-          borderRadius: '24px',
-          padding: '0',
-          overflow: 'hidden',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-        }}
-      >
-        {/* Modal Header Banner */}
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #0B132B 0%, #0F172A 100%)',
-            padding: '24px 28px',
-            color: '#FFF',
-            position: 'relative',
-            borderBottom: '1px solid rgba(255,255,255,0.08)'
-          }}
-        >
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={titles[mode]}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 1000 }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}
+    >
+      <div style={{ width: '100%', maxWidth: 420, background: '#FFF', borderRadius: 20, overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}>
+        <div style={{ background: 'linear-gradient(135deg, #0B132B 0%, #0F172A 100%)', padding: '24px 28px', color: '#FFF', position: 'relative' }}>
           <button
+            type="button"
             onClick={onClose}
-            style={{
-              position: 'absolute',
-              right: '20px',
-              top: '20px',
-              background: 'rgba(255,255,255,0.1)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#FFF',
-              cursor: 'pointer'
-            }}
+            aria-label="Close"
+            style={{ position: 'absolute', right: 20, top: 20, background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFF', cursor: 'pointer' }}
           >
             <X size={18} />
           </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '24px' }}>🇳🇬</span>
-            <div>
-              <h2 style={{ fontSize: '20px', fontWeight: '800' }}>
-                {mode === 'login' && 'Sign In to Gada'}
-                {mode === 'otp' && 'Fast OTP Verification'}
-                {mode === 'register' && 'Create Customer Account'}
-              </h2>
-              <p style={{ fontSize: '13px', color: '#94A3B8', marginTop: '2px' }}>
-                Connected to Gada Mobile & Web Ecosystem
-              </p>
-            </div>
-          </div>
-
-          {/* Mode Switcher Tabs */}
-          <div style={{ display: 'flex', gap: '6px', marginTop: '18px', background: 'rgba(255,255,255,0.06)', padding: '4px', borderRadius: '12px' }}>
-            <button
-              onClick={() => { setMode('register'); setError(''); }}
-              style={{
-                flex: 1,
-                padding: '8px',
-                borderRadius: '8px',
-                border: 'none',
-                background: mode === 'register' ? '#FF6B00' : 'transparent',
-                color: '#FFF',
-                fontWeight: '700',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              Sign Up
-            </button>
-            <button
-              onClick={() => { setMode('login'); setError(''); }}
-              style={{
-                flex: 1,
-                padding: '8px',
-                borderRadius: '8px',
-                border: 'none',
-                background: mode === 'login' ? '#FF6B00' : 'transparent',
-                color: '#FFF',
-                fontWeight: '700',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setMode('otp'); setError(''); }}
-              style={{
-                flex: 1,
-                padding: '8px',
-                borderRadius: '8px',
-                border: 'none',
-                background: mode === 'otp' ? '#FF6B00' : 'transparent',
-                color: '#FFF',
-                fontWeight: '700',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              Phone / OTP
-            </button>
-          </div>
+          <div style={{ fontSize: 13, opacity: 0.8 }}>🇳🇬 Gada</div>
+          <h2 style={{ margin: '6px 0 0', fontSize: 22 }}>{titles[mode]}</h2>
         </div>
 
-        {/* Modal Body */}
-        <div style={{ padding: '24px 28px', maxHeight: '70vh', overflowY: 'auto' }}>
-          {message && (
-            <div
-              style={{
-                background: '#FFF4EC',
-                border: '1px solid #FFD8BE',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                marginBottom: '18px',
-                fontSize: '13px',
-                color: '#C2410C',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <Sparkles size={16} />
-              <span>{message}</span>
+        <div style={{ padding: '22px 28px 28px' }}>
+          {mode !== 'forgot' && (
+            <div style={{ display: 'flex', background: '#F1F5F9', borderRadius: 12, padding: 4, marginBottom: 18 }}>
+              {[['login', 'Sign in'], ['signup', 'Create account']].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => switchMode(key)}
+                  style={{ flex: 1, padding: '10px', border: 'none', borderRadius: 9, fontWeight: 700, cursor: 'pointer', background: mode === key ? ORANGE : 'transparent', color: mode === key ? '#FFF' : '#475569' }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           )}
 
+          {message && <p style={{ ...hint, marginTop: 0, color: '#B45309' }}>{message}</p>}
+          {notice && !error && <p style={{ ...hint, marginTop: 0, color: '#047857' }}>{notice}</p>}
           {error && (
-            <div
-              style={{
-                background: '#FEF2F2',
-                border: '1px solid #F87171',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                marginBottom: '18px',
-                fontSize: '13px',
-                color: '#B91C1C',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              <AlertCircle size={16} />
+            <div role="alert" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#FEF2F2', color: '#B91C1C', borderRadius: 10, padding: '10px 12px', fontSize: 14, marginBottom: 14 }}>
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: 1 }} />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Prominent Google Sign-In / Sign-Up Button */}
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            style={{
-              width: '100%',
-              padding: '13px 18px',
-              borderRadius: '14px',
-              border: '1.5px solid #E2E8F0',
-              background: '#FFFFFF',
-              color: '#0F172A',
-              fontSize: '14px',
-              fontWeight: '700',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '12px',
-              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.04)',
-              transition: 'all 0.2s ease',
-              marginBottom: '18px'
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.background = '#F8FAFC'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.background = '#FFFFFF'; }}
-          >
-            <GoogleIcon />
-            <span>{mode === 'register' ? 'Sign up with Google' : 'Continue with Google'}</span>
-          </button>
+          {form}
 
-          {/* Divider */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
-            <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }} />
-            <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px' }}>
-              {mode === 'register' ? 'Or register with email' : 'Or with email & password'}
-            </span>
-            <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }} />
-          </div>
-
-          {/* 1. PASSWORD LOGIN MODE */}
-          {mode === 'login' && (
-            <form onSubmit={handlePasswordLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                  Email Address or Phone Number
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Mail size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. george@gada.ng or 08034567890"
-                    value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 14px 12px 42px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #E2E8F0',
-                      fontSize: '14px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                  Password
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Enter your account password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 42px 12px 42px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #E2E8F0',
-                      fontSize: '14px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: 'absolute',
-                      right: '14px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      background: 'none',
-                      border: 'none',
-                      color: '#94A3B8',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: '14px',
-                  border: 'none',
-                  background: '#FF6B00',
-                  color: '#FFF',
-                  fontSize: '15px',
-                  fontWeight: '800',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: '0 8px 20px rgba(255, 107, 0, 0.3)'
-                }}
-              >
-                {loading ? 'Signing In...' : 'Sign In with Password'}
-                <ArrowRight size={18} />
-              </button>
-            </form>
-          )}
-
-          {/* 2. PHONE / OTP LOGIN MODE */}
-          {mode === 'otp' && (
-            <div>
-              {!otpSent ? (
-                <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <p style={{ fontSize: '13px', color: '#64748B', lineHeight: '1.5' }}>
-                    Enter your phone number or email. We will send a 6-digit OTP code to instantly sign you in without needing a password.
-                  </p>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                      Phone Number or Email
-                    </label>
-                    <div style={{ position: 'relative' }}>
-                      <Smartphone size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. +234 803 456 7890 or user@gada.ng"
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '12px 14px 12px 42px',
-                          borderRadius: '12px',
-                          border: '1.5px solid #E2E8F0',
-                          fontSize: '14px',
-                          boxSizing: 'border-box'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      width: '100%',
-                      padding: '14px',
-                      borderRadius: '14px',
-                      border: 'none',
-                      background: '#0B4FD8',
-                      color: '#FFF',
-                      fontSize: '15px',
-                      fontWeight: '800',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    {loading ? 'Sending OTP...' : 'Send 6-Digit OTP Code'}
-                    <KeyRound size={18} />
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {otpNotice && (
-                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '12px', fontSize: '13px', color: '#1E40AF' }}>
-                      {otpNotice}
-                    </div>
-                  )}
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                      Enter 6-Digit OTP Code
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      required
-                      placeholder="123456"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '14px',
-                        borderRadius: '12px',
-                        border: '2px solid #FF6B00',
-                        fontSize: '22px',
-                        fontWeight: '800',
-                        letterSpacing: '8px',
-                        textAlign: 'center',
-                        boxSizing: 'border-box'
-                      }}
-                    />
-                    <span style={{ fontSize: '11px', color: '#64748B', marginTop: '4px', display: 'block', textAlign: 'center' }}>
-                      Default demo verification OTP is <strong>123456</strong>
-                    </span>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    style={{
-                      width: '100%',
-                      padding: '14px',
-                      borderRadius: '14px',
-                      border: 'none',
-                      background: '#FF6B00',
-                      color: '#FFF',
-                      fontSize: '15px',
-                      fontWeight: '800',
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px'
-                    }}
-                  >
-                    {loading ? 'Verifying...' : 'Verify & Access Account'}
-                    <CheckCircle2 size={18} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setOtpSent(false); setOtpCode(''); }}
-                    style={{ background: 'none', border: 'none', color: '#64748B', fontSize: '12px', cursor: 'pointer', textAlign: 'center' }}
-                  >
-                    Change phone number or resend OTP
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-
-          {/* 3. REGISTER MODE */}
-          {mode === 'register' && (
-            <form onSubmit={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Full Name
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <User size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. George Emmanuel"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    style={{ width: '100%', padding: '11px 14px 11px 42px', borderRadius: '12px', border: '1.5px solid #E2E8F0', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Email Address
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Mail size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type="email"
-                    required
-                    placeholder="george@gada.ng"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    style={{ width: '100%', padding: '11px 14px 11px 42px', borderRadius: '12px', border: '1.5px solid #E2E8F0', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Phone Number
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Phone size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type="tel"
-                    required
-                    placeholder="+234 803 456 7890"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    style={{ width: '100%', padding: '11px 14px 11px 42px', borderRadius: '12px', border: '1.5px solid #E2E8F0', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Create Password
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Lock size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    placeholder="Min 6 characters"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    style={{ width: '100%', padding: '11px 42px 11px 42px', borderRadius: '12px', border: '1.5px solid #E2E8F0', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Default Delivery Address
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <MapPin size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
-                  <input
-                    type="text"
-                    placeholder="e.g. 14 Commercial Ave, Victoria Island or Ring Road"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    style={{ width: '100%', padding: '11px 14px 11px 42px', borderRadius: '12px', border: '1.5px solid #E2E8F0', fontSize: '14px', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  borderRadius: '14px',
-                  border: 'none',
-                  background: '#FF6B00',
-                  color: '#FFF',
-                  fontSize: '15px',
-                  fontWeight: '800',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  marginTop: '8px'
-                }}
-              >
-                {loading ? 'Creating Account...' : 'Sign Up with Email'}
-              </button>
-            </form>
-          )}
-
-          {/* Quick Demo Login Option */}
-          <div style={{ marginTop: '24px', paddingTop: '18px', borderTop: '1px solid #E2E8F0', textAlign: 'center' }}>
-            <p style={{ fontSize: '12px', color: '#64748B', marginBottom: '10px' }}>
-              Want to test without typing credentials?
+          {mode === 'signup' && step === 'phone' && (
+            <p style={{ ...hint, textAlign: 'center', marginTop: 16 }}>
+              Already have an account?{' '}
+              <button type="button" onClick={() => switchMode('login')} style={linkBtn}>Sign in</button>
             </p>
-            <button
-              onClick={handleQuickDemoLogin}
-              style={{
-                width: '100%',
-                padding: '11px',
-                borderRadius: '12px',
-                border: '1.5px dashed #0B4FD8',
-                background: '#EFF6FF',
-                color: '#0B4FD8',
-                fontSize: '13px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px'
-              }}
-            >
-              <Sparkles size={16} />
-              Quick One-Click Demo Customer Login
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+const linkBtn = { background: 'none', border: 'none', color: ORANGE, fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: 13 };
+const hint = { fontSize: 13, color: '#64748B', margin: '0 0 12px' };

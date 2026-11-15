@@ -1,3 +1,4 @@
+import NotificationBell from './NotificationBell';
 import React, { useState } from 'react';
 import { ShoppingBag, MapPin, User, LogOut, Package, ChevronDown, Sparkles, LogIn } from 'lucide-react';
 
@@ -60,6 +61,8 @@ export default function Navbar({
 
         {/* Nav Actions */}
         <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <NotificationBell onOpen={() => setActiveTab('notifications')} />
+
           {/* Cart Button (hidden on landing page for guest visitors) */}
           {currentUser && (
             <button

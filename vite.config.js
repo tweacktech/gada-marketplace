@@ -1,26 +1,20 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const src = fileURLToPath(new URL('./src', import.meta.url));
 
-// https://vite.dev/config/
+// The source was written for Next.js; these aliases map the imports onto the
+// shims already in src/lib so it runs under Vite.
 export default defineConfig({
   plugins: [react()],
-  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      'next/link': path.resolve(__dirname, './src/lib/next-link-shim.tsx'),
-      'next/navigation': path.resolve(__dirname, './src/lib/next-navigation-shim.ts'),
-      'next/server': path.resolve(__dirname, './src/lib/next-server-shim.ts'),
-      'next': path.resolve(__dirname, './src/lib/next-shim.ts')
-    }
+    alias: [
+      { find: /^@\//, replacement: `${src}/` },
+      { find: /^next\/link$/, replacement: `${src}/lib/next-link-shim.tsx` },
+      { find: /^next\/navigation$/, replacement: `${src}/lib/next-navigation-shim.ts` },
+      { find: /^next\/server$/, replacement: `${src}/lib/next-server-shim.ts` },
+      { find: /^next$/, replacement: `${src}/lib/next-shim.ts` },
+    ],
   },
-  server: {
-    host: true,
-    port: 5173,
-    allowedHosts: true
-  }
-})
+});

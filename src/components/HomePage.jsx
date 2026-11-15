@@ -2,11 +2,21 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CATEGORIES, PROMO_BANNERS, POPULAR_ITEMS, VENDORS } from '../data/marketplaceData';
 import { locationService, POPULAR_LOCATIONS } from '../services/locationService';
 import { catalogApi } from '../api';
+import { marketplaceApi } from '../api/marketplace';
 import {
   Star, Clock, ArrowRight, Heart, Plus, ShoppingBag, ShieldCheck,
   Sparkles, MapPin, Navigation, SlidersHorizontal, ArrowDownUp, Compass,
   Search, Check, Filter, X, ChevronDown, Loader2
 } from 'lucide-react';
+
+// Alternate images from the existing vendor list, used when a live vendor has no image.
+const fallbackFor = (i) => VENDORS[i % VENDORS.length] || {};
+const swapToFallback = (index, key) => (e) => {
+  const img = e.currentTarget;
+  if (img.dataset.fb) return;
+  img.dataset.fb = '1';
+  img.src = fallbackFor(index)[key] || '';
+};
 
 export default function HomePage({
   selectedCategory,
@@ -32,6 +42,12 @@ export default function HomePage({
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [productsData, setProductsData] = useState({ data: [], total: 0, hasMore: false });
+  const [categoryList, setCategoryList] = useState(CATEGORIES);
+  const [liveVendors, setLiveVendors] = useState([]);
+  useEffect(() => {
+    marketplaceApi.getVendors().then(setLiveVendors).catch(() => setLiveVendors([]));
+  }, []);
+  useEffect(() => { catalogApi.getCategories().then(setCategoryList).catch(() => {}); }, []);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
 
   // Debounce search input (350ms)
@@ -78,26 +94,32 @@ export default function HomePage({
     setFavorites(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const currentCategoryObj = CATEGORIES.find(c => c.id === selectedCategory) || { id: 'all', name: 'All Items', icon: '🍽️' };
+  const currentCategoryObj = categoryList.find(c => c.id === selectedCategory) || { id: 'all', name: 'All Items', icon: '🍽️' };
 
-  // Dynamically enrich vendors with real-time distance and sort closest to farthest
+  // Live merchants. Distance comes from real coordinates, not generated offsets.
   const vendorsWithDistance = useMemo(() => {
-    const enriched = locationService.enrichVendorsWithLocation(VENDORS, currentLocation);
-
-    const filtered = enriched.filter(v => {
-      if (vendorCategory === 'All') return true;
-      return v.category === vendorCategory;
+    const withDistance = liveVendors.map((v) => {
+      const hasCoords = currentLocation?.lat != null && v.lat != null && v.lng != null;
+      const distance = hasCoords
+        ? locationService.getDistanceKm(currentLocation.lat, currentLocation.lng, Number(v.lat), Number(v.lng))
+        : null;
+      return {
+        ...v,
+        distance,
+        deliveryTime: distance != null ? locationService.estimateDeliveryTime(distance) : (v.prepTime || '30–45 min'),
+      };
     });
-
-    return filtered.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-  }, [currentLocation, vendorCategory]);
+    return withDistance
+      .filter((v) => vendorCategory === 'All' || v.category === vendorCategory)
+      .sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+  }, [liveVendors, currentLocation, vendorCategory]);
 
   return (
     <div className="home-page-container" style={{ width: '100%', minHeight: '100vh', background: '#F8FAFC' }}>
       {/* Category Navigation Pills */}
       <div className="categories-bar" style={{ background: '#FFF', borderBottom: '1px solid #E2E8F0', padding: '14px 32px' }}>
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
-          {CATEGORIES.map(cat => (
+          {categoryList.map(cat => (
             <button
               key={cat.id}
               className={`category-pill ${selectedCategory === cat.id ? 'active' : ''}`}
@@ -537,8 +559,14 @@ export default function HomePage({
             </div>
           </div>
 
+          {!currentLocation?.lat && (
+            <button onClick={onOpenLocationModal} style={{ marginBottom: '16px', background: 'none', border: 'none', color: '#0B4FD8', fontWeight: '700', cursor: 'pointer', padding: 0 }}>
+              📍 Set your delivery location to see stores near you
+            </button>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-            {vendorsWithDistance.map(vendor => (
+            {vendorsWithDistance.map((vendor, index) => (
               <div
                 key={vendor.id}
                 onClick={() => onSelectVendor(vendor)}
@@ -561,9 +589,9 @@ export default function HomePage({
                 }}
               >
                 <div style={{ position: 'relative', height: '140px', background: '#CBD5E1' }}>
-                  <img src={vendor.banner} alt={vendor.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={vendor.banner || fallbackFor(index).banner} alt={vendor.name} onError={swapToFallback(index, 'banner')} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   <div style={{ position: 'absolute', bottom: '10px', left: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img src={vendor.logo} alt="" style={{ width: '48px', height: '48px', borderRadius: '12px', border: '2px solid #FFF', objectFit: 'cover', background: '#FFF' }} />
+                    <img src={vendor.logo || fallbackFor(index).logo} alt="" onError={swapToFallback(index, 'logo')} style={{ width: '48px', height: '48px', borderRadius: '12px', border: '2px solid #FFF', objectFit: 'cover', background: '#FFF' }} />
                     <span style={{ fontSize: '15px', fontWeight: '900', color: '#FFF', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
                       {vendor.name}
                     </span>
@@ -580,7 +608,7 @@ export default function HomePage({
                   </span>
                   <span>&bull;</span>
                   <span style={{ color: '#0B4FD8', fontWeight: '700' }}>
-                    📍 {vendor.distance || 1.5} km away
+                    📍 {vendor.distance != null ? `${vendor.distance.toFixed(1)} km away` : 'Set location for distance'}
                   </span>
                 </div>
               </div>

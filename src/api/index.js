@@ -9,8 +9,44 @@ import { apiClient } from './client';
 import { POPULAR_ITEMS, VENDORS, CATEGORIES } from '../data/marketplaceData';
 import { locationService } from '../services/locationService';
 import { authService } from '../services/authService';
+import { marketplaceApi } from './marketplace';
 
 const IS_MOCK_MODE = !import.meta.env.VITE_API_URL;
+
+// Legacy endpoints (catalog products, cart, checkout, orders) are not in the
+// customer API yet. Keep them on local mock data until they are migrated.
+const LIVE_LEGACY = false;
+
+// Catalog is live: products are vendor menu items, categories are marketplace categories.
+const LIVE_CATALOG = true;
+
+async function loadCatalogSource() {
+  const vendors = (await marketplaceApi.getVendors()).slice(0, 20);
+  const menus = await Promise.all(
+    vendors.map((v) => marketplaceApi.getVendorMenu(v.id).then((m) => ({ v, m })).catch(() => null))
+  );
+  return menus.filter(Boolean).flatMap(({ v, m }) =>
+    m.products
+      .filter((p) => p.isAvailable)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        image: p.image,
+        category: p.categoryName ? p.categoryName.trim().toLowerCase() : 'uncategorised',
+        categoryName: p.category,
+        price: p.price,
+        unit: p.unit,
+        rating: v.rating,
+        vendor: v.name,
+        vendorId: v.id,
+        locationName: v.locationName,
+        lat: v.lat,
+        lng: v.lng,
+        inStock: true,
+      }))
+  );
+}
 
 // In-memory / localStorage orders store
 const ORDERS_STORAGE_KEY = 'gada_storefront_orders';
@@ -32,161 +68,35 @@ const saveStoredOrders = (orders) => {
 };
 
 // -------------------------------------------------------------
-// 1. AUTHENTICATION API
+// 1. AUTHENTICATION API  (live – see ./customerAuth.js)
 // -------------------------------------------------------------
-export const authApi = {
-  async login({ email, phone, password }) {
-    if (!IS_MOCK_MODE) {
-      const res = await apiClient.post('/auth/login', { email, phone, password });
-      if (res.token) apiClient.setToken(res.token);
-      return res;
-    }
-
-    // Mock adapter
-    await new Promise(r => setTimeout(r, 400));
-    const users = authService.getAllUsers();
-    const identifier = (email || phone || '').trim().toLowerCase();
-    
-    let user = users.find(u =>
-      (u.email.toLowerCase() === identifier || u.phone.includes(identifier)) &&
-      (!password || u.password === password)
-    );
-
-    if (!user && identifier) {
-      // Auto-create or login demo user if not found for quick testing
-      user = users[0];
-    }
-
-    if (!user) {
-      throw new Error('Invalid credentials. Please check your email/phone and password.');
-    }
-
-    const mockToken = `mock-jwt-token-${user.id}-${Date.now()}`;
-    apiClient.setToken(mockToken);
-    authService.saveCurrentUser(user);
-
-    return {
-      success: true,
-      user,
-      token: mockToken
-    };
-  },
-
-  async requestOtp({ phone, email }) {
-    if (!IS_MOCK_MODE) {
-      return apiClient.post('/auth/otp/send', { phone, email });
-    }
-
-    await new Promise(r => setTimeout(r, 350));
-    const demoOtp = '123456';
-    return {
-      success: true,
-      message: `OTP sent successfully to ${phone || email}! (For testing, enter: ${demoOtp})`,
-      demoOtp
-    };
-  },
-
-  async verifyOtp({ phone, email, otp }) {
-    if (!IS_MOCK_MODE) {
-      const res = await apiClient.post('/auth/otp/verify', { phone, email, otp });
-      if (res.token) apiClient.setToken(res.token);
-      return res;
-    }
-
-    await new Promise(r => setTimeout(r, 400));
-    if (otp !== '123456' && otp !== '000000') {
-      throw new Error('Invalid OTP code. Please enter the 6-digit code (use 123456 for testing).');
-    }
-
-    const users = authService.getAllUsers();
-    let user = users.find(u => (email && u.email === email) || (phone && u.phone === phone)) || users[0];
-
-    const mockToken = `mock-jwt-otp-${user.id}-${Date.now()}`;
-    apiClient.setToken(mockToken);
-    authService.saveCurrentUser(user);
-
-    return {
-      success: true,
-      user,
-      token: mockToken
-    };
-  },
-
-  async register(payload) {
-    if (!IS_MOCK_MODE) {
-      const res = await apiClient.post('/auth/register', payload);
-      if (res.token) apiClient.setToken(res.token);
-      return res;
-    }
-
-    await new Promise(r => setTimeout(r, 450));
-    const user = authService.register(payload);
-    const mockToken = `mock-jwt-reg-${user.id}-${Date.now()}`;
-    apiClient.setToken(mockToken);
-
-    return {
-      success: true,
-      user,
-      token: mockToken
-    };
-  },
-
-  async loginWithGoogle(payload = {}) {
-    if (!IS_MOCK_MODE) {
-      const res = await apiClient.post('/auth/google', payload);
-      if (res.token) apiClient.setToken(res.token);
-      return res;
-    }
-
-    await new Promise(r => setTimeout(r, 400));
-    const user = authService.loginWithGoogle(payload);
-    const mockToken = `mock-google-token-${user.id}-${Date.now()}`;
-    apiClient.setToken(mockToken);
-
-    return {
-      success: true,
-      user,
-      token: mockToken
-    };
-  },
-
-  async getMe() {
-    if (!IS_MOCK_MODE) {
-      return apiClient.get('/auth/me');
-    }
-    return authService.getCurrentUser();
-  },
-
-  async updateProfile(updates) {
-    if (!IS_MOCK_MODE) {
-      return apiClient.put('/auth/profile', updates);
-    }
-    return authService.updateProfile(updates);
-  },
-
-  async logout() {
-    apiClient.setToken(null);
-    authService.logout();
-    return { success: true };
-  }
-};
+export { authApi } from './customerAuth';
 
 // -------------------------------------------------------------
 // 2. CATALOG & SEARCH API
 // -------------------------------------------------------------
 export const catalogApi = {
   async getCategories() {
-    if (!IS_MOCK_MODE) {
-      return apiClient.get('/catalog/categories');
+    if (LIVE_CATALOG) {
+      // Platform categories plus every category that appears on a live vendor menu.
+      const [platform, products] = await Promise.all([
+        marketplaceApi.browseCategories().catch(() => []),
+        loadCatalogSource(),
+      ]);
+      const seen = new Map();
+      const add = (name, icon) => {
+        const key = (name || '').trim().toLowerCase();
+        if (key && !seen.has(key)) seen.set(key, { id: key, name: name.trim(), icon: icon || '🛍️' });
+      };
+      platform.forEach((c) => add(c.name, c.icon));
+      products.forEach((p) => add(p.categoryName));
+      return [{ id: 'all', name: 'All', icon: '🍽️' }, ...seen.values()];
     }
     return CATEGORIES;
   },
 
   async getProducts(params = {}) {
-    if (!IS_MOCK_MODE) {
-      return apiClient.get('/catalog/products', params);
-    }
-
+    const source = LIVE_CATALOG ? await loadCatalogSource() : POPULAR_ITEMS;
     await new Promise(r => setTimeout(r, 250)); // simulate network latency
     const {
       query = '',
@@ -202,7 +112,7 @@ export const catalogApi = {
       limit = 12
     } = params;
 
-    let items = locationService.enrichItemsWithLocation(POPULAR_ITEMS, currentLocation);
+    let items = locationService.enrichItemsWithLocation(source, currentLocation);
 
     // Filter by query (search keyword)
     if (query.trim()) {
@@ -270,7 +180,12 @@ export const catalogApi = {
   },
 
   async getProductById(id, currentLocation = null) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_CATALOG) {
+      const found = (await loadCatalogSource()).find((p) => String(p.id) === String(id));
+      if (!found) throw new Error(`Product "${id}" is no longer available.`);
+      return { ...found, inStock: true, stockCount: 24, images: found.image ? [found.image] : [] };
+    }
+    if (LIVE_LEGACY) {
       return apiClient.get(`/catalog/products/${id}`);
     }
 
@@ -321,7 +236,12 @@ export const catalogApi = {
   },
 
   async getRelatedProducts(productId, category) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_CATALOG) {
+      return (await loadCatalogSource())
+        .filter((p) => String(p.id) !== String(productId) && (!category || category === 'all' || p.category === category))
+        .slice(0, 4);
+    }
+    if (LIVE_LEGACY) {
       return apiClient.get(`/catalog/products/${productId}/related`);
     }
 
@@ -337,43 +257,29 @@ export const catalogApi = {
 // -------------------------------------------------------------
 export const vendorApi = {
   async getVendors(params = {}) {
-    if (!IS_MOCK_MODE) {
-      return apiClient.get('/vendors', params);
-    }
-
-    const { category = 'All', currentLocation = null } = params;
-    let list = locationService.enrichVendorsWithLocation(VENDORS, currentLocation);
-
-    if (category && category !== 'All') {
-      list = list.filter(v => v.category === category);
-    }
-
+    const { category = 'All', currentLocation = null, search, type } = params;
+    let list = await marketplaceApi.getVendors({ search, type });
+    if (category && category !== 'All') list = list.filter(v => v.category === category);
+    list = locationService.enrichVendorsWithLocation(list, currentLocation);
     return list.sort((a, b) => (a.distance || 0) - (b.distance || 0));
   },
 
-  async getVendorBySlug(slugOrId, currentLocation = null) {
-    if (!IS_MOCK_MODE) {
-      return apiClient.get(`/vendors/${slugOrId}`);
-    }
-
-    await new Promise(r => setTimeout(r, 200));
-    const vendor = VENDORS.find(v => v.id === slugOrId || v.slug === slugOrId || v.name.toLowerCase().replace(/\s+/g, '-') === slugOrId.toLowerCase());
-
-    if (!vendor) {
-      throw new Error(`Vendor "${slugOrId}" not found.`);
-    }
+  async getVendorBySlug(vendorId, currentLocation = null) {
+    const [vendor, menu] = await Promise.all([
+      marketplaceApi.getVendor(vendorId),
+      marketplaceApi.getVendorMenu(vendorId),
+    ]);
 
     const enriched = {
       ...vendor,
-      slug: vendor.slug || vendor.id,
-      bio: vendor.bio || `Specialist food and grocery merchant operating from ${vendor.locationName}. Offering hygienic packaging and swift dispatch with Gada logistics.`,
-      operatingHours: vendor.operatingHours || '8:00 AM - 10:00 PM (Mon - Sun)',
-      minimumOrder: vendor.minimumOrder || 1500,
-      isOpen: true,
-      isVerified: true
+      menu: menu.products,
+      categories: menu.categories,
+      bio: `Merchant operating from ${vendor.address || 'Gada'}. Hygienic packaging and swift dispatch with Gada logistics.`,
+      operatingHours: vendor.prepTime ? `Prep time ${vendor.prepTime}` : '',
+      isOpen: vendor.isOpen,
     };
 
-    if (currentLocation) {
+    if (currentLocation && vendor.lat != null && vendor.lng != null) {
       const dist = locationService.getDistanceKm(currentLocation.lat, currentLocation.lng, vendor.lat, vendor.lng);
       enriched.distance = dist;
       enriched.deliveryFee = locationService.calculateDeliveryFee(dist);
@@ -440,7 +346,7 @@ export const cartApi = {
 // -------------------------------------------------------------
 export const checkoutApi = {
   async initializePayment({ orderPayload, paymentMethod }) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_LEGACY) {
       return apiClient.post('/payments/initialize', { orderPayload, paymentMethod });
     }
 
@@ -467,7 +373,7 @@ export const checkoutApi = {
   },
 
   async verifyPayment(reference) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_LEGACY) {
       return apiClient.get(`/payments/verify/${reference}`);
     }
 
@@ -487,7 +393,7 @@ export const checkoutApi = {
 // -------------------------------------------------------------
 export const orderApi = {
   async createOrder(orderPayload) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_LEGACY) {
       return apiClient.post('/orders', orderPayload);
     }
 
@@ -589,7 +495,7 @@ export const orderApi = {
   },
 
   async getOrderById(orderId) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_LEGACY) {
       return apiClient.get(`/orders/${orderId}`);
     }
 
@@ -606,7 +512,7 @@ export const orderApi = {
   },
 
   async trackOrder(orderId) {
-    if (!IS_MOCK_MODE) {
+    if (LIVE_LEGACY) {
       return apiClient.get(`/orders/${orderId}/track`);
     }
 

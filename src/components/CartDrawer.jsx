@@ -204,7 +204,7 @@ export default function CartDrawer({
                 </div>
               ))}
 
-              {/* Promo Code Input */}
+              {/* COUPON CODE - DISABLED. Remove this comment wrapper to re-enable.
               <div style={{ marginTop: '8px', background: '#F8FAFC', padding: '14px', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
                 <form onSubmit={handleApplyPromo} style={{ display: 'flex', gap: '8px' }}>
                   <input
@@ -255,6 +255,7 @@ export default function CartDrawer({
                   </div>
                 )}
               </div>
+*/}
             </div>
           )}
         </div>
@@ -269,7 +270,7 @@ export default function CartDrawer({
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>
-                  Delivery Fee ({summary.vendorCount} {summary.vendorCount > 1 ? 'Hubs' : 'Hub'})
+                  Delivery Fee
                 </span>
                 <span style={{ fontWeight: '700', color: '#0F172A' }}>₦{summary.deliveryFee.toLocaleString()}</span>
               </div>
@@ -308,7 +309,7 @@ export default function CartDrawer({
                 boxShadow: '0 8px 20px rgba(255, 107, 0, 0.3)'
               }}
             >
-              <span>Proceed to Multi-Vendor Checkout</span>
+              <span>Proceed to Checkout</span>
               <ArrowRight size={18} />
             </button>
           </div>
