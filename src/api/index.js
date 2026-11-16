@@ -38,6 +38,7 @@ async function loadCatalogSource() {
         price: p.price,
         unit: p.unit,
         rating: v.rating,
+        vendorOpen: v.isOpen,
         vendor: v.name,
         vendorId: v.id,
         locationName: v.locationName,
@@ -272,10 +273,10 @@ export const vendorApi = {
 
     const enriched = {
       ...vendor,
-      menu: menu.products,
+      menu: menu.products.map(p => ({ ...p, vendorOpen: vendor.isOpen })),
       categories: menu.categories,
       bio: `Merchant operating from ${vendor.address || 'Gada'}. Hygienic packaging and swift dispatch with Gada logistics.`,
-      operatingHours: vendor.prepTime ? `Prep time ${vendor.prepTime}` : '',
+      operatingHours: vendor.hoursLabel || (vendor.isOpen ? 'Open now' : 'Closed now'),
       isOpen: vendor.isOpen,
     };
 

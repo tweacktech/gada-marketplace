@@ -77,6 +77,10 @@ export function CartProvider({ children }) {
       window.alert('Please sign in to add items to your cart.');
       return false;
     }
+    if (item.vendorOpen === false) {
+      window.alert(`${item.vendor || 'This vendor'} is closed right now. You can order again when they open.`);
+      return false;
+    }
     try {
       setCartError('');
       const current = raw?.vendors?.[0];

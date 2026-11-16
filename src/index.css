@@ -1094,3 +1094,16 @@ input, textarea, select {
 }
 
 
+
+/* Profile tabs: first tab starts flush with the content edge; tighter spacing between tabs */
+.profile-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-light);
+}
+.profile-tabs > .tab-item {
+  padding: 10px 14px;
+}
+.profile-tabs > .tab-item:first-child {
+  padding-left: 0;
+}

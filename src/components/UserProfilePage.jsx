@@ -8,6 +8,14 @@ import { authService } from '../services/authService';
 import OrdersPage from './OrdersPage';
 import WalletPage from './WalletPage';
 import { walletApi } from '../api/wallet';
+import { marketplaceApi } from '../api/marketplace';
+
+const TabLabel = ({ icon, children }) => (
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+    <span style={{ lineHeight: 1 }}>{icon}</span>
+    <span>{children}</span>
+  </span>
+);
 
 export default function UserProfilePage({
   currentUser,
@@ -21,6 +29,15 @@ export default function UserProfilePage({
   const [liveBalance, setLiveBalance] = useState(null);
   useEffect(() => {
     walletApi.getBalance().then(setLiveBalance).catch(() => {});
+  }, [activeTab]);
+
+  // Live order count from the server (first page; "+" when there are more).
+  const [orderCount, setOrderCount] = useState(null);
+  const [ordersHasMore, setOrdersHasMore] = useState(false);
+  useEffect(() => {
+    marketplaceApi.getOrders(1)
+      .then((r) => { setOrderCount(r.items.length); setOrdersHasMore(!!r.nextPage); })
+      .catch(() => {});
   }, [activeTab]);
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [topupAmount, setTopupAmount] = useState(10000);
@@ -206,30 +223,30 @@ export default function UserProfilePage({
       </div>
 
       {/* Tabs */}
-      <div className="tab-group" style={{ marginBottom: '24px' }}>
+      <div className="profile-tabs" style={{ marginBottom: '24px' }}>
         <div
           className={`tab-item ${activeTab === 'orders' ? 'active' : ''}`}
           onClick={() => setActiveTab('orders')}
         >
-          📦 My Orders ({orders.length})
+          <TabLabel icon="📦">My Orders{orderCount != null ? ` (${orderCount}${ordersHasMore ? '+' : ''})` : ''}</TabLabel>
         </div>
         <div
           className={`tab-item ${activeTab === 'wallet' ? 'active' : ''}`}
           onClick={() => setActiveTab('wallet')}
         >
-          💳 Wallet & Transactions
+          <TabLabel icon="💳">Wallet & Transactions</TabLabel>
         </div>
         <div
           className={`tab-item ${activeTab === 'addresses' ? 'active' : ''}`}
           onClick={() => setActiveTab('addresses')}
         >
-          📍 Delivery Addresses ({addresses.length})
+          <TabLabel icon="📍">Delivery Addresses ({addresses.length})</TabLabel>
         </div>
         <div
           className={`tab-item ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => setActiveTab('settings')}
         >
-          ⚙️ Account Info
+          <TabLabel icon="⚙️">Account Info</TabLabel>
         </div>
       </div>
 

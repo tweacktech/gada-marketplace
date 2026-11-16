@@ -31,6 +31,15 @@ export const adaptProduct = (p, categoryName = '') => ({
   isFavorited: !!p.is_favorited,
 });
 
+/** "08:00:00" or "20:00" → "8:00 AM". */
+export const formatTime = (t) => {
+  if (!t) return '';
+  const [h, m] = String(t).split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour = ((h + 11) % 12) + 1;
+  return `${hour}:${String(m || 0).padStart(2, '0')} ${suffix}`;
+};
+
 export const adaptVendor = (v) => ({
   id: String(v.id),
   slug: v.slug,
@@ -47,6 +56,9 @@ export const adaptVendor = (v) => ({
   deliveryFee: v.delivery_fee ?? null,
   prepTime: v.prep_time,
   isOpen: !!v.is_open,
+  hoursLabel: v.opens_at && v.closes_at
+    ? `Open Today: ${formatTime(v.opens_at)} - ${formatTime(v.closes_at)}`
+    : null,
   logo: v.logo,
   banner: v.cover_image,
   phone: v.phone,
@@ -56,6 +68,16 @@ export const adaptVendor = (v) => ({
 });
 
 export const marketplaceApi = {
+  /** Live check at checkout time. Throws naming any vendor that is closed. */
+  async assertVendorsOpen(vendorIds) {
+    const vendors = await Promise.all(vendorIds.map((id) => marketplaceApi.getVendor(id)));
+    const closed = vendors.filter((v) => !v.isOpen);
+    if (closed.length) {
+      const names = closed.map((v) => v.name).join(', ');
+      throw new Error(`${names} ${closed.length > 1 ? 'are' : 'is'} closed right now. You can order again when ${closed.length > 1 ? 'they open' : 'it opens'}.`);
+    }
+  },
+
   // Public
   async browseCategories() {
     const res = await apiClient.get('/marketplace/browse-categories', undefined, { auth: false });
@@ -155,9 +177,13 @@ export const marketplaceApi = {
   },
 
   // Orders
-  async getOrders() {
-    const res = await apiClient.get('/marketplace/orders');
-    return res.data || [];
+  /** @returns {{ items, nextPage }} — the list is paginated by the server. */
+  async getOrders(page = 1) {
+    const res = await apiClient.get('/marketplace/orders', { page });
+    const body = res.data;
+    const items = Array.isArray(body) ? body : body?.data || [];
+    const hasNext = !!body?.next_page_url || !!body?.links?.next;
+    return { items, nextPage: hasNext ? page + 1 : null };
   },
 
   async getOrder(orderId) {

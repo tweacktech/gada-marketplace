@@ -21,7 +21,7 @@ export default function CheckoutModal({
   const { currentUser, addAddress } = useAuth();
   const { cartItems, vendorGroups, summary, reloadCart } = useCart();
 
-  const [paymentMethod, setPaymentMethod] = useState('card_paystack'); // 'card_paystack' | 'wallet'
+  const [paymentMethod, setPaymentMethod] = useState('wallet'); // 'wallet' (Paystack option removed)
   const [selectedAddressId, setSelectedAddressId] = useState(
     currentUser?.addresses?.find(a => a.isDefault)?.id || currentUser?.addresses?.[0]?.id || 'custom'
   );
@@ -81,6 +81,7 @@ export default function CheckoutModal({
     if (paymentMethod === 'wallet') {
       setIsProcessingPayment(true);
       try {
+        await marketplaceApi.assertVendorsOpen(vendorGroups.map(g => g.vendorId));
         const addr = currentUser?.addresses?.find(a => a.id === selectedAddressId);
         const res = await marketplaceApi.checkout({
           deliveryAddress: resolvedAddress,
@@ -440,35 +441,6 @@ export default function CheckoutModal({
               </span>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Paystack Gateway */}
-                <div
-                  onClick={() => setPaymentMethod('card_paystack')}
-                  style={{
-                    padding: '14px 16px',
-                    borderRadius: '14px',
-                    border: (paymentMethod === 'card_paystack' || paymentMethod === 'paystack') ? '2px solid #0AA5FF' : '1px solid #E2E8F0',
-                    background: (paymentMethod === 'card_paystack' || paymentMethod === 'paystack') ? '#F0F9FF' : '#FFF',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#E0F2FE', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Landmark size={18} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>Paystack Gateway</span>
-                        <span style={{ fontSize: '10px', background: '#0AA5FF', color: '#FFF', padding: '1px 6px', borderRadius: '4px', fontWeight: '800' }}>Instant</span>
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#64748B' }}>Cards, USSD, Bank Transfer, Apple Pay & QR</div>
-                    </div>
-                  </div>
-                  {(paymentMethod === 'card_paystack' || paymentMethod === 'paystack') && <CheckCircle size={18} color="#0AA5FF" />}
-                </div>
-
                 {/* Gada In-App Wallet */}
                 <div
                   onClick={() => setPaymentMethod('wallet')}
