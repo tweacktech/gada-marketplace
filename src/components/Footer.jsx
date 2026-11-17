@@ -245,7 +245,7 @@ export default function Footer({
                   style={{ color: '#CBD5E1', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', textAlign: 'left' }}
                 >
                   <Sparkles size={15} color="#FBBF24" />
-                  <span>Market Run Personal Shopper</span>
+                  <span>Market Run Personal Shopper (Coming soon)</span>
                 </button>
               </li>
 

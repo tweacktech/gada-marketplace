@@ -7,7 +7,7 @@ export const CATEGORIES = [
   { id: 'bakery', name: 'Bakery', icon: '🧁' },
   { id: 'groceries', name: 'Groceries', icon: '🛒' },
   { id: 'pharmacy', name: 'Pharmacy', icon: '💊' },
-  { id: 'market-run', name: 'Market Run', icon: '🛍️', badge: 'Popular' },
+  { id: 'market-run', name: 'Market Run', icon: '🛍️', badge: 'Coming soon' },
 ];
 
 export const PROMO_BANNERS = [
@@ -18,7 +18,7 @@ export const PROMO_BANNERS = [
     discount: '20% OFF Delivery',
     bgGradient: 'linear-gradient(135deg, #0B4FD8 0%, #1D4ED8 100%)',
     image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
-    tag: 'Gada Special'
+    tag: 'Coming soon'
   },
   {
     id: 2,

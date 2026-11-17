@@ -190,13 +190,9 @@ export default function HomePage({
                   {b.discount}
                 </span>
                 {b.id === 1 && (
-                  <button
-                    onClick={onNavigateToMarketRun}
-                    style={{ background: 'rgba(255,255,255,0.25)', border: 'none', color: '#FFF', padding: '6px 14px', borderRadius: '12px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <span>Request Errand</span>
-                    <ArrowRight size={14} />
-                  </button>
+                  <span style={{ fontSize: '12px', fontWeight: '800', background: 'rgba(255,255,255,0.25)', color: '#FFF', padding: '6px 14px', borderRadius: '12px' }}>
+                    Coming soon
+                  </span>
                 )}
               </div>
             </div>

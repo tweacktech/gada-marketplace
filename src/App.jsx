@@ -5,7 +5,7 @@ import HomePage from './components/HomePage';
 import ItemGroupsLanding from './components/ItemGroupsLanding';
 import VendorPage from './components/VendorPage';
 import ItemModal from './components/ItemModal';
-import MarketRunPage from './components/MarketRunPage';
+import ComingSoon from './components/ComingSoon';
 import CartDrawer from './components/CartDrawer';
 import CheckoutModal from './components/CheckoutModal';
 import TrackOrderPage from './components/TrackOrderPage';
@@ -348,17 +348,11 @@ export default function App() {
       )}
 
       {activeTab === 'market-run' && (
-        <MarketRunPage
+        <ComingSoon
+          title="Market Run Errand Service"
           onBack={() => {
             setActiveTab('home');
             window.location.hash = '';
-          }}
-          onSubmitMarketRun={() => {
-            if (!currentUser) {
-              handleOpenAuth('register', 'Please sign in or register to dispatch your Market Run errand request.');
-            } else {
-              showToast('Market Run Request Dispatched to Bodija Market Agent! 🛍️');
-            }
           }}
         />
       )}

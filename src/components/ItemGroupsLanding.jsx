@@ -32,9 +32,9 @@ const ITEM_GROUPS = [
     title: 'Local Market',
     subtitle: 'Fresh Farm Produce & Tubers',
     icon: '🛍️',
-    badge: 'Fresh Farm Produce',
-    badgeColor: '#059669',
-    itemCount: 'Market Run Errands',
+    badge: 'Coming Soon',
+    badgeColor: '#FF6B00',
+    itemCount: 'Coming soon',
     image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
     description: 'Fresh groceries sourced directly from local open-air farm markets: fresh tomatoes, habanero peppers, yam tubers, smoked fish, and local spices.',
     tags: ['Fresh Tomatoes & Peppers', 'Yam Tubers', 'Smoked Fish & Meat', 'Local Cooking Spices', 'Palm Oil & Grains']
