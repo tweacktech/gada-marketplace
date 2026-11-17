@@ -93,7 +93,7 @@ export default function ItemGroupsLanding({
       {/* GROUPS / TYPES OF ITEMS SECTION */}
       <section style={{ maxWidth: '1240px', margin: '0 auto', padding: '40px 24px 60px' }}>
         {/* HERO SEARCH BAR ON TOP OF CATEGORIES PREVIEW */}
-        <div style={{ maxWidth: '780px', margin: '0 auto 40px' }}>
+        <div style={{ maxWidth: '780px', margin: '56px auto 40px' }}>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -409,29 +409,6 @@ export default function ItemGroupsLanding({
                     )}
                   </div>
 
-                  {/* Unlock Button */}
-                  <button
-                    style={{
-                      width: '100%',
-                      padding: '11px',
-                      borderRadius: '12px',
-                      border: 'none',
-                      background: isHovered ? '#FF6B00' : '#EFF6FF',
-                      color: isHovered ? '#FFF' : '#0B4FD8',
-                      fontSize: '13px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <Lock size={14} />
-                    <span>Sign Up to Unlock Items</span>
-                    <ArrowRight size={14} />
-                  </button>
                 </div>
               </div>
             );
