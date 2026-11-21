@@ -22,7 +22,7 @@ const section = { background: '#FFF', border: '1px solid #E2E8F0', borderRadius:
 /** Top-up and saved cards. `onChanged` lets the parent refresh the balance. */
 export default function WalletFunding({ onChanged }) {
   const [channels, setChannels] = useState([]);
-  const [provider, setProvider] = useState('');
+  const [provider, setProvider] = useState('');  // selected channel's provider name
   const [amount, setAmount] = useState('');
   const [cards, setCards] = useState([]);
   const [cardAmount, setCardAmount] = useState('');
@@ -36,8 +36,7 @@ export default function WalletFunding({ onChanged }) {
   useEffect(() => {
     paymentsApi.channels().then((list) => {
       setChannels(list);
-      const first = list.find((c) => paymentsApi.supportsTopUp(c.provider));
-      if (first) setProvider(first.provider);
+      if (list[0]) setProvider(list[0].provider);
     }).catch((e) => setError(e.message));
     loadCards();
 
@@ -47,10 +46,10 @@ export default function WalletFunding({ onChanged }) {
     const pendingCard = sessionStorage.getItem(PENDING_CARD);
     const settle = async () => {
       try {
-        if (pendingCard && (reference === pendingCard || params.get('card_reference') === pendingCard)) {
-          await paymentsApi.verifyAddedCard(pendingCard);
-          setNotice('Card saved.');
+        if (pendingCard) {
+          // The server saves the card when Paystack calls back; just reload the list.
           await loadCards();
+          setNotice('Card saved.');
         } else if (pendingTopUp && reference && reference === pendingTopUp.reference) {
           await paymentsApi.verifyPayment(reference, pendingTopUp.channel);
           setNotice('Wallet funded successfully.');
@@ -83,9 +82,11 @@ export default function WalletFunding({ onChanged }) {
   const topUp = () => run(async () => {
     const value = Number(amount);
     if (!value || value < 100) throw new Error('Enter an amount of at least ₦100.');
-    const { url, reference } = await paymentsApi.startTopUp(provider, value);
+    const channel = channels.find((c) => c.provider === provider);
+    if (!channel) throw new Error('Choose a payment method first.');
+    const { url, reference } = await paymentsApi.startTopUp(channel, value);
     if (!url) throw new Error('Payment page could not be opened. Please try again.');
-    sessionStorage.setItem(PENDING_TOPUP, JSON.stringify({ reference, channel: provider }));
+    sessionStorage.setItem(PENDING_TOPUP, JSON.stringify({ reference, channel: channel.provider }));
     window.location.href = url;
   });
 
@@ -103,8 +104,7 @@ export default function WalletFunding({ onChanged }) {
 
   const removeCard = (id) => run(async () => {
     if (!window.confirm('Remove this card?')) return;
-    await paymentsApi.deleteCard(id);
-    await loadCards();
+    setCards(await paymentsApi.deleteCard(id));
   });
 
   const payWithCard = (id) => run(async () => {
@@ -116,7 +116,7 @@ export default function WalletFunding({ onChanged }) {
     onChanged?.();
   });
 
-  const topUpChannels = channels.filter((c) => paymentsApi.supportsTopUp(c.provider));
+  const topUpChannels = channels;
 
   return (
     <div>
@@ -128,10 +128,14 @@ export default function WalletFunding({ onChanged }) {
         {topUpChannels.length === 0 && <p style={{ color: '#64748B', fontSize: 13 }}>No funding methods are available right now.</p>}
         {topUpChannels.length > 0 && (
           <>
+            {channels.find((c) => c.provider === provider)?.description && (
+              <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 10px' }}>{channels.find((c) => c.provider === provider).description}</p>
+            )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
               {topUpChannels.map((c) => (
-                <button key={c.provider} type="button" onClick={() => setProvider(c.provider)} style={{ ...btn('ghost'), borderColor: provider === c.provider ? ORANGE : '#E2E8F0', color: provider === c.provider ? ORANGE : '#334155' }}>
-                  {c.description || c.provider}
+                <button key={c.provider} type="button" onClick={() => setProvider(c.provider)} style={{ ...btn('ghost'), display: 'flex', alignItems: 'center', gap: 8, borderColor: provider === c.provider ? ORANGE : '#E2E8F0', color: provider === c.provider ? ORANGE : '#334155' }}>
+                  {c.provider_image && <img src={c.provider_image} alt="" width={18} height={18} style={{ objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+                  <span>{c.provider}</span>
                 </button>
               ))}
             </div>

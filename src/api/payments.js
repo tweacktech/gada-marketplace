@@ -1,16 +1,8 @@
-/** Wallet funding, saved cards (authenticated customer). */
+/** Wallet funding and saved cards (authenticated customer). */
 import { apiClient } from './client';
 
-// Top-up gateways by provider. Providers without an entry are shown as unavailable.
-const GATEWAYS = {
-  paystack: '/payment/paystack/gateway',
-  flutterwave: '/payment/flutterwave/gateway',
-  qorepay: '/payment/qorepay/gateway',
-  nomba: '/payment/nomba/gateway',
-};
-
 export const adaptCard = (c) => ({
-  id: String(c.card_id),
+  id: String(c.card_id ?? c.id),
   label: c.label || `${c.brand || 'Card'} •••• ${c.last4 || ''}`.trim(),
   brand: c.brand,
   expMonth: c.exp_month,
@@ -19,22 +11,28 @@ export const adaptCard = (c) => ({
   isDefault: !!c.is_default,
 });
 
+/** Lists can come back as a plain array or wrapped in an object. Anything else is an empty list. */
+const asList = (body, key) => {
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.[key])) return body[key];
+  if (Array.isArray(body?.data)) return body.data;
+  return [];
+};
+
 export const paymentsApi = {
-  /** @returns {Array<{provider, description, link, method, provider_image}>} */
+  /**
+   * Active funding gateways from the server. Each has provider, description, link,
+   * method and provider_image; top-up posts to `link` using `method`.
+   */
   async channels() {
     const res = await apiClient.get('/payment/paymentchannels');
-    return res.data?.channels || [];
+    return asList(res.data, 'channels');
   },
 
-  supportsTopUp(provider) {
-    return Boolean(GATEWAYS[String(provider).toLowerCase()]);
-  },
-
-  /** Starts a top-up and returns the gateway page to redirect to. */
-  async startTopUp(provider, amount) {
-    const path = GATEWAYS[String(provider).toLowerCase()];
-    if (!path) throw new Error('This payment method is not available yet.');
-    const res = await apiClient.post(path, { amount: Number(amount) });
+  /** Starts a top-up on the given channel and returns the gateway page to open. */
+  async startTopUp(channel, amount) {
+    const method = (channel.method || 'POST').toUpperCase();
+    const res = await apiClient.request(channel.link, { method, body: { amount: Number(amount) } });
     const d = res.data || {};
     return {
       url: d.url || d.link || d.authorization_url || d.checkout_url || null,
@@ -46,31 +44,34 @@ export const paymentsApi = {
     return apiClient.post('/payment/verify', { reference_id: reference, payment_channel: channel });
   },
 
+  /** GET /payment/cards → { count, cards }. Default card comes first. */
   async listCards() {
     const res = await apiClient.get('/payment/cards');
-    return (res.data || []).map(adaptCard);
+    return asList(res.data, 'cards').map(adaptCard);
   },
 
-  /** Starts card tokenisation and returns the gateway page to redirect to. */
+  /** POST /payment/paystack/addnewcard — starts a verification charge; the card is saved on callback. */
   async startAddCard() {
     const res = await apiClient.post('/payment/paystack/addnewcard', {});
-    return { url: res.data?.url || null, reference: res.data?.reference || null };
+    return { url: res.data?.url || res.data?.authorization_url || null, reference: res.data?.reference || null };
   },
 
-  verifyAddedCard(reference) {
-    return apiClient.post('/payment/cards/verify', { reference });
-  },
-
+  /** POST /payment/default/card { card_id } */
   setDefaultCard(cardId) {
-    return apiClient.post('/payment/default/card', { card_id: cardId });
+    return apiClient.post('/payment/default/card', { card_id: String(cardId) });
   },
 
-  deleteCard(cardId) {
-    return apiClient.request('/payment/delete/card', { method: 'DELETE', body: { card_id: cardId } });
+  /** DELETE /payment/delete/card { card_id } — resolves to the updated card list. */
+  async deleteCard(cardId) {
+    const res = await apiClient.request('/payment/delete/card', { method: 'DELETE', body: { card_id: String(cardId) } });
+    return asList(res.data, 'cards').map(adaptCard);
   },
 
-  /** Funds the wallet from a saved card. */
+  /**
+   * POST /payment/fundwallet/card { card_id, amount } — minimum 100, one request every 30 seconds.
+   * POST /payment/paystack/chargecard is routed to the same flow, so this is used for both.
+   */
   chargeCard(cardId, amount) {
-    return apiClient.post('/payment/fundwallet/card', { card_id: cardId, amount: Number(amount) });
+    return apiClient.post('/payment/fundwallet/card', { card_id: String(cardId), amount: Number(amount) });
   },
 };

@@ -64,7 +64,9 @@ export const apiClient = {
           Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== '')
         ).toString()
       : '';
-    const url = `${BASE_URL}${path}${qs ? `?${qs}` : ''}`;
+    // Absolute URLs (e.g. gateway links returned by the API) are used as-is.
+    const base = /^https?:\/\//i.test(path) ? path : `${BASE_URL}${path}`;
+    const url = `${base}${qs ? `?${qs}` : ''}`;
 
     const finalHeaders = { Accept: 'application/json', ...headers };
     if (body !== undefined) finalHeaders['Content-Type'] = 'application/json';
